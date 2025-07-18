@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        compiler: [gfortran]
+        include:
+          - os: ubuntu-latest
+            compiler: gfortran
+            version: 11
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Fortran
+      uses: fortran-lang/setup-fortran@v1
+      with:
+        compiler: ${{ matrix.compiler }}
+        version: ${{ matrix.version }}
+
+    - name: Setup fpm
+      uses: fortran-lang/setup-fpm@v5
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip python3-matplotlib
+        pip3 install --user numpy matplotlib
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        pip3 install numpy matplotlib
+
+    - name: Build
+      run: fpm build --profile release
+
+    - name: Run tests
+      run: fpm test
+
+    - name: Run tests with coverage
+      if: runner.os == 'Linux' && matrix.compiler == 'gfortran'
+      run: |
+        fpm test --flag "--coverage"
+        gcov -o build/gfortran*/fortfem/test_* src/*.f90
+
+    - name: Upload coverage to Codecov
+      if: runner.os == 'Linux' && matrix.compiler == 'gfortran'
+      uses: codecov/codecov-action@v4
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: ./*.gcov
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Build examples
+      run: |
+        fpm build --example
+
+    - name: Run example
+      run: |
+        fpm run --example plot_basis || echo "Example needs fortfem module implementation"

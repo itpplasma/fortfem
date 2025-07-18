@@ -1,0 +1,28 @@
+# Build directories
+build/
+*.mod
+*.smod
+
+# Coverage files
+*.gcov
+*.gcda
+*.gcno
+coverage.info
+
+# Output files
+*.png
+*.vtk
+*.dat
+
+# Editor files
+.vscode/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python cache (for fortplotlib)
+__pycache__/
+*.pyc

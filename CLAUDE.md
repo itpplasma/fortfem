@@ -4,53 +4,83 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Fortfem is a Fortran-based project, likely intended for Finite Element Method implementations. It uses the Fortran Package Manager (FPM) as its build system.
+FortFEM is a modern Fortran finite element library designed for ease of use, inspired by FreeFEM and FEniCS. It provides natural mathematical notation for defining weak forms and supports various element types on triangular and quadrilateral meshes.
 
 ## Build and Development Commands
 
 ### Build Commands
 - **Build the project**: `fpm build`
 - **Build with specific compiler**: `fpm build --compiler gfortran`
+- **Build with coverage**: `fpm build --flag "--coverage"`
 - **Clean build**: `fpm clean && fpm build`
 
 ### Run Commands
 - **Run the main application**: `fpm run`
-- **Run with specific executable**: `fpm run --target app-name`
+- **Run specific example**: `fpm run --example plot_basis`
+- **List available examples**: `fpm run --example --list`
 
 ### Test Commands
 - **Run all tests**: `fpm test`
 - **Run specific test**: `fpm test test-name`
+- **Run tests with coverage**: `fpm test --flag "--coverage"`
 
 ### Development Workflow
-1. For new features: Add source files to `src/`
-2. For executables: Add programs to `app/`
-3. For tests: Add test programs to `test/`
-4. FPM automatically discovers and builds new files
+1. Follow strict TDD: Write test first, then implementation
+2. Source files go in `src/`
+3. Tests go in `test/`
+4. Examples go in `example/`
+5. Documentation goes in `doc/`
+6. Check TODO.md for current implementation tasks
 
 ## Architecture and Code Structure
 
-### Module Organization
-- **src/fortfem.f90**: Main module containing core functionality
-  - Uses explicit typing (`implicit none`)
-  - Follows private-by-default pattern with explicit public interfaces
-  - Currently implements basic module structure ready for expansion
+### Directory Layout
+```
+fortfem/
+├── src/          # Core library modules
+├── test/         # Unit and integration tests
+├── example/      # Example programs with visualization
+├── app/          # Main applications
+└── doc/          # Documentation
+```
 
-### Build Configuration (fpm.toml)
-- Auto-builds executables, tests, and examples
-- Enforces modern Fortran practices:
-  - No implicit typing
-  - No implicit externals
-  - Free-form source
+### Module Organization (Planned)
+- **src/fortfem.f90**: Main module exporting public API
+- **src/mesh/**: Mesh data structures and I/O
+- **src/elements/**: Finite element definitions
+- **src/quadrature/**: Integration rules
+- **src/forms/**: Weak form abstractions
+- **src/assembly/**: Matrix and vector assembly
+- **src/solvers/**: Linear solver interfaces
+
+### Dependencies
+- **fortplotlib**: For visualization in examples
+- **LAPACK**: For linear algebra (initially)
+- **SuiteSparse**: For sparse solvers (future)
 
 ### Fortran Conventions
-- Derived types should follow `typename_t` naming convention
+- Derived types follow `typename_t` naming convention
 - Line limit: 88 characters
 - Indentation: 4 spaces
 - Arrays extend with: `arr = [arr, new_element]` syntax
-- Use associate blocks for unused dummy arguments to avoid warnings
+- Use associate blocks for unused dummy arguments
+- Real precision: `dp = kind(0.0d0)`
 
 ### Testing Strategy
-- Follow Test-Driven Development (TDD)
-- Tests go in `test/` directory as separate programs
-- Each test program should focus on a specific module or feature
-- Use FPM's automatic test discovery
+- Strict Test-Driven Development (TDD)
+- Target >90% code coverage
+- Tests must pass before implementation
+- Use codecov for coverage tracking
+- CI/CD runs on every push
+
+### Example Development
+- Examples use fortplotlib for visualization
+- Each example demonstrates specific features
+- Examples should be self-contained
+- Include mathematical description in comments
+
+### Continuous Integration
+- GitHub Actions workflow in `.github/workflows/ci.yml`
+- Tests on Ubuntu and macOS with gfortran
+- Automatic codecov upload
+- Example compilation verification
