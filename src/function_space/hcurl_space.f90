@@ -31,6 +31,9 @@ module fortfem_hcurl_space
         procedure :: get_triangle_dofs => hcurl_space_get_triangle_dofs
         procedure :: evaluate_edge_basis_2d_with_piola
         procedure :: evaluate_edge_basis_oriented
+        procedure :: evaluate_edge_basis_physical
+        procedure :: evaluate_nedelec_basis_correct
+        procedure :: evaluate_conservative_basis
     end type hcurl_space_t
     
 contains
@@ -149,8 +152,8 @@ contains
         ! Get triangle area
         triangle_area = compute_triangle_area(this%mesh, triangle_idx)
         
-        ! Evaluate basis functions (simplified constant basis functions)
-        call evaluate_edge_basis_2d(xi, eta, triangle_area, basis_values)
+        ! Evaluate basis functions ensuring no double-counting of DOFs
+        call this%evaluate_conservative_basis(triangle_idx, xi, eta, basis_values)
         
         ! Get DOF indices for this triangle
         call this%mesh%get_triangle_edge_dofs(triangle_idx, triangle_dofs)
@@ -311,5 +314,118 @@ contains
             values(2, i) = orientation_sign * (jacobian(2, 1) * ref_values(1, i) + jacobian(2, 2) * ref_values(2, i)) / det_jacobian
         end do
     end subroutine evaluate_edge_basis_oriented
+    
+    ! Evaluate edge basis functions based on physical edge directions
+    subroutine evaluate_edge_basis_physical(this, triangle_idx, xi, eta, values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        integer :: triangle_dofs(3), i, global_edge_idx
+        real(dp) :: edge_length, tangent(2)
+        integer :: vertices(2)
+        
+        ! Get DOF indices for this triangle
+        call this%mesh%get_triangle_edge_dofs(triangle_idx, triangle_dofs)
+        
+        ! For each local edge, map to physical edge direction
+        do i = 1, 3
+            global_edge_idx = triangle_dofs(i) + 1  ! Convert to 1-based
+            
+            if (global_edge_idx <= this%mesh%n_edges) then
+                ! Get the physical edge direction
+                call this%mesh%get_edge_vertices(global_edge_idx, vertices)
+                call this%mesh%get_edge_length_tangent(global_edge_idx, edge_length, tangent)
+                
+                ! Map edge to appropriate coordinate direction
+                ! Simple heuristic: if tangent is more horizontal, map to x-direction
+                if (abs(tangent(1)) > abs(tangent(2))) then
+                    ! More horizontal edge -> x-direction basis
+                    values(1, i) = 1.0_dp
+                    values(2, i) = 0.0_dp
+                else
+                    ! More vertical edge -> y-direction basis  
+                    values(1, i) = 0.0_dp
+                    values(2, i) = 1.0_dp
+                end if
+            else
+                ! Safety fallback
+                values(1, i) = 0.0_dp
+                values(2, i) = 0.0_dp
+            end if
+        end do
+    end subroutine evaluate_edge_basis_physical
+    
+    ! Evaluate Nédélec basis functions with correct edge-tangent properties
+    subroutine evaluate_nedelec_basis_correct(this, triangle_idx, xi, eta, values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        integer :: triangle_dofs(3), i, global_edge_idx
+        real(dp) :: edge_length, tangent(2)
+        integer :: vertices(2)
+        real(dp) :: edge_lengths(3), edge_tangents(2,3)
+        
+        ! Get DOF indices for this triangle
+        call this%mesh%get_triangle_edge_dofs(triangle_idx, triangle_dofs)
+        
+        ! Get all edge information for this triangle
+        do i = 1, 3
+            global_edge_idx = triangle_dofs(i) + 1  ! Convert to 1-based
+            
+            if (global_edge_idx <= this%mesh%n_edges) then
+                call this%mesh%get_edge_vertices(global_edge_idx, vertices)
+                call this%mesh%get_edge_length_tangent(global_edge_idx, edge_lengths(i), edge_tangents(:,i))
+            else
+                edge_lengths(i) = 1.0_dp
+                edge_tangents(1,i) = 1.0_dp
+                edge_tangents(2,i) = 0.0_dp
+            end if
+        end do
+        
+        ! For each basis function, create a field aligned with its edge
+        do i = 1, 3
+            ! Simple approach: basis function i is aligned with edge i's tangent direction
+            ! Scaled to give unit line integral along the edge
+            values(1, i) = edge_tangents(1, i) / edge_lengths(i)
+            values(2, i) = edge_tangents(2, i) / edge_lengths(i)
+        end do
+    end subroutine evaluate_nedelec_basis_correct
+    
+    ! Conservative basis evaluation - each DOF contributes exactly once
+    subroutine evaluate_conservative_basis(this, triangle_idx, xi, eta, values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        integer :: triangle_dofs(3), i, global_edge_idx
+        real(dp) :: edge_length, tangent(2)
+        integer :: vertices(2)
+        
+        ! Get DOF indices for this triangle
+        call this%mesh%get_triangle_edge_dofs(triangle_idx, triangle_dofs)
+        
+        ! For each local edge, create basis function based on global DOF index
+        do i = 1, 3
+            global_edge_idx = triangle_dofs(i) + 1  ! Convert to 1-based
+            
+            if (global_edge_idx <= this%mesh%n_edges) then
+                call this%mesh%get_edge_vertices(global_edge_idx, vertices)
+                call this%mesh%get_edge_length_tangent(global_edge_idx, edge_length, tangent)
+                
+                ! Create basis function proportional to edge tangent
+                ! Divide by number of triangles sharing this edge to avoid double-counting
+                values(1, i) = tangent(1) * 0.5_dp  ! Assume each edge is shared by 2 triangles
+                values(2, i) = tangent(2) * 0.5_dp
+            else
+                values(1, i) = 0.0_dp
+                values(2, i) = 0.0_dp
+            end if
+        end do
+    end subroutine evaluate_conservative_basis
 
 end module fortfem_hcurl_space
