@@ -15,6 +15,8 @@ module fortfem
     use fortfem_poisson_1d_sparse
     use fortfem_function_space
     use fortfem_weak_forms
+    use fortfem_expressions
+    use fortfem_forms
     
     implicit none
     

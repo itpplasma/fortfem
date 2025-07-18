@@ -18,6 +18,7 @@ FortFEM is a modern Fortran finite element library designed for ease of use, ins
 - **Run the main application**: `fpm run`
 - **Run specific example**: `fpm run --example plot_basis`
 - **List available examples**: `fpm run --example --list`
+- **Use `fpm run --example <name>` to run examples**
 
 ### Test Commands
 - **Run all tests**: `fpm test`
