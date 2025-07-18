@@ -1,0 +1,367 @@
+module fortfem_mesh_2d
+    use fortfem_kinds
+    implicit none
+    private
+    
+    type, public :: mesh_2d_t
+        ! Vertices
+        integer :: n_vertices = 0
+        real(dp), allocatable :: vertices(:,:)  ! (2, n_vertices) - x,y coordinates
+        
+        ! Triangles  
+        integer :: n_triangles = 0
+        integer, allocatable :: triangles(:,:)  ! (3, n_triangles) - vertex indices
+        
+        ! Edges
+        integer :: n_edges = 0
+        integer, allocatable :: edges(:,:)      ! (2, n_edges) - vertex indices
+        integer, allocatable :: edge_to_triangles(:,:)  ! (2, n_edges) - triangle indices
+        
+        ! Boundary
+        integer :: n_boundary_edges = 0
+        integer, allocatable :: boundary_edges(:)     ! Indices of boundary edges
+        logical, allocatable :: is_boundary_vertex(:) ! Flag for boundary vertices
+        
+        ! Connectivity
+        type(sparse_int_list_t), allocatable :: vertex_to_triangles(:)
+        type(sparse_int_list_t), allocatable :: vertex_to_vertices(:)
+        
+    contains
+        procedure :: create_rectangular
+        procedure :: build_connectivity
+        procedure :: find_boundary
+        procedure :: compute_areas
+        procedure :: save_to_file
+        procedure :: load_from_file
+        procedure :: destroy
+    end type mesh_2d_t
+    
+    ! Helper type for sparse connectivity
+    type :: sparse_int_list_t
+        integer :: n = 0
+        integer, allocatable :: items(:)
+    end type sparse_int_list_t
+    
+contains
+
+    subroutine create_rectangular(this, nx, ny, x_min, x_max, y_min, y_max)
+        class(mesh_2d_t), intent(out) :: this
+        integer, intent(in) :: nx, ny  ! Number of vertices in x,y directions
+        real(dp), intent(in) :: x_min, x_max, y_min, y_max
+        
+        integer :: i, j, k, v1, v2, v3, v4
+        real(dp) :: dx, dy
+        
+        ! Total vertices and triangles
+        this%n_vertices = nx * ny
+        this%n_triangles = 2 * (nx-1) * (ny-1)
+        
+        ! Allocate arrays
+        allocate(this%vertices(2, this%n_vertices))
+        allocate(this%triangles(3, this%n_triangles))
+        
+        ! Grid spacing
+        dx = (x_max - x_min) / real(nx - 1, dp)
+        dy = (y_max - y_min) / real(ny - 1, dp)
+        
+        ! Create vertices
+        k = 0
+        do j = 1, ny
+            do i = 1, nx
+                k = k + 1
+                this%vertices(1, k) = x_min + (i-1) * dx
+                this%vertices(2, k) = y_min + (j-1) * dy
+            end do
+        end do
+        
+        ! Create triangles (each rectangle split into 2 triangles)
+        k = 0
+        do j = 1, ny-1
+            do i = 1, nx-1
+                ! Vertices of rectangle
+                v1 = (j-1)*nx + i       ! bottom-left
+                v2 = (j-1)*nx + i + 1   ! bottom-right
+                v3 = j*nx + i + 1       ! top-right
+                v4 = j*nx + i           ! top-left
+                
+                ! Lower triangle
+                k = k + 1
+                this%triangles(1, k) = v1
+                this%triangles(2, k) = v2
+                this%triangles(3, k) = v3
+                
+                ! Upper triangle
+                k = k + 1
+                this%triangles(1, k) = v1
+                this%triangles(2, k) = v3
+                this%triangles(3, k) = v4
+            end do
+        end do
+        
+    end subroutine create_rectangular
+    
+    subroutine build_connectivity(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: t, v, i, j
+        integer, allocatable :: temp_list(:)
+        
+        ! Allocate connectivity arrays
+        if (allocated(this%vertex_to_triangles)) deallocate(this%vertex_to_triangles)
+        if (allocated(this%vertex_to_vertices)) deallocate(this%vertex_to_vertices)
+        
+        allocate(this%vertex_to_triangles(this%n_vertices))
+        allocate(this%vertex_to_vertices(this%n_vertices))
+        allocate(temp_list(20))  ! Temporary list for building connectivity
+        
+        ! Build vertex-to-triangle connectivity
+        do v = 1, this%n_vertices
+            this%vertex_to_triangles(v)%n = 0
+            
+            ! Count triangles containing this vertex
+            do t = 1, this%n_triangles
+                do i = 1, 3
+                    if (this%triangles(i, t) == v) then
+                        this%vertex_to_triangles(v)%n = this%vertex_to_triangles(v)%n + 1
+                        temp_list(this%vertex_to_triangles(v)%n) = t
+                        exit
+                    end if
+                end do
+            end do
+            
+            ! Store triangle list
+            if (this%vertex_to_triangles(v)%n > 0) then
+                allocate(this%vertex_to_triangles(v)%items(this%vertex_to_triangles(v)%n))
+                this%vertex_to_triangles(v)%items = temp_list(1:this%vertex_to_triangles(v)%n)
+            end if
+        end do
+        
+        ! Build edges from triangles
+        call build_edges_from_triangles(this)
+        
+        deallocate(temp_list)
+        
+    end subroutine build_connectivity
+    
+    subroutine build_edges_from_triangles(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: t, i, j, v1, v2, e, found
+        integer :: max_edges
+        integer, allocatable :: temp_edges(:,:)
+        
+        ! Maximum possible edges
+        max_edges = 3 * this%n_triangles
+        allocate(temp_edges(2, max_edges))
+        
+        this%n_edges = 0
+        
+        ! Extract unique edges from triangles
+        do t = 1, this%n_triangles
+            do i = 1, 3
+                j = mod(i, 3) + 1
+                v1 = min(this%triangles(i, t), this%triangles(j, t))
+                v2 = max(this%triangles(i, t), this%triangles(j, t))
+                
+                ! Check if edge already exists
+                found = 0
+                do e = 1, this%n_edges
+                    if (temp_edges(1, e) == v1 .and. temp_edges(2, e) == v2) then
+                        found = e
+                        exit
+                    end if
+                end do
+                
+                if (found == 0) then
+                    this%n_edges = this%n_edges + 1
+                    temp_edges(1, this%n_edges) = v1
+                    temp_edges(2, this%n_edges) = v2
+                end if
+            end do
+        end do
+        
+        ! Copy to final array
+        allocate(this%edges(2, this%n_edges))
+        this%edges = temp_edges(:, 1:this%n_edges)
+        
+        deallocate(temp_edges)
+        
+    end subroutine build_edges_from_triangles
+    
+    subroutine find_boundary(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: e, t, i, j, v1, v2, count
+        integer, allocatable :: temp_boundary(:)
+        
+        if (.not. allocated(this%edges)) then
+            call build_edges_from_triangles(this)
+        end if
+        
+        allocate(temp_boundary(this%n_edges))
+        allocate(this%is_boundary_vertex(this%n_vertices))
+        this%is_boundary_vertex = .false.
+        
+        this%n_boundary_edges = 0
+        
+        ! Find edges that belong to only one triangle
+        do e = 1, this%n_edges
+            v1 = this%edges(1, e)
+            v2 = this%edges(2, e)
+            count = 0
+            
+            ! Count triangles containing this edge
+            do t = 1, this%n_triangles
+                do i = 1, 3
+                    j = mod(i, 3) + 1
+                    if ((this%triangles(i, t) == v1 .and. this%triangles(j, t) == v2) .or. &
+                        (this%triangles(i, t) == v2 .and. this%triangles(j, t) == v1)) then
+                        count = count + 1
+                        exit
+                    end if
+                end do
+            end do
+            
+            ! Boundary edge belongs to exactly one triangle
+            if (count == 1) then
+                this%n_boundary_edges = this%n_boundary_edges + 1
+                temp_boundary(this%n_boundary_edges) = e
+                this%is_boundary_vertex(v1) = .true.
+                this%is_boundary_vertex(v2) = .true.
+            end if
+        end do
+        
+        ! Store boundary edges
+        allocate(this%boundary_edges(this%n_boundary_edges))
+        this%boundary_edges = temp_boundary(1:this%n_boundary_edges)
+        
+        deallocate(temp_boundary)
+        
+    end subroutine find_boundary
+    
+    function compute_areas(this) result(areas)
+        class(mesh_2d_t), intent(in) :: this
+        real(dp), allocatable :: areas(:)
+        
+        integer :: t
+        real(dp) :: x1, y1, x2, y2, x3, y3
+        
+        allocate(areas(this%n_triangles))
+        
+        do t = 1, this%n_triangles
+            x1 = this%vertices(1, this%triangles(1, t))
+            y1 = this%vertices(2, this%triangles(1, t))
+            x2 = this%vertices(1, this%triangles(2, t))
+            y2 = this%vertices(2, this%triangles(2, t))
+            x3 = this%vertices(1, this%triangles(3, t))
+            y3 = this%vertices(2, this%triangles(3, t))
+            
+            ! Area = 0.5 * |det([[x1-x3, x2-x3], [y1-y3, y2-y3]])|
+            areas(t) = 0.5_dp * abs((x1-x3)*(y2-y3) - (x2-x3)*(y1-y3))
+        end do
+        
+    end function compute_areas
+    
+    subroutine save_to_file(this, filename)
+        class(mesh_2d_t), intent(in) :: this
+        character(len=*), intent(in) :: filename
+        
+        integer :: unit, i
+        
+        open(newunit=unit, file=filename, status='replace', action='write')
+        
+        ! Write header
+        write(unit, '(a)') '# FortFEM 2D Mesh'
+        write(unit, '(a,i0)') '# Vertices: ', this%n_vertices
+        write(unit, '(a,i0)') '# Triangles: ', this%n_triangles
+        
+        ! Write vertices
+        write(unit, '(a)') 'VERTICES'
+        write(unit, '(i0)') this%n_vertices
+        do i = 1, this%n_vertices
+            write(unit, '(2(es23.16,1x))') this%vertices(:, i)
+        end do
+        
+        ! Write triangles
+        write(unit, '(a)') 'TRIANGLES'
+        write(unit, '(i0)') this%n_triangles
+        do i = 1, this%n_triangles
+            write(unit, '(3(i0,1x))') this%triangles(:, i)
+        end do
+        
+        close(unit)
+        
+    end subroutine save_to_file
+    
+    subroutine load_from_file(this, filename)
+        class(mesh_2d_t), intent(out) :: this
+        character(len=*), intent(in) :: filename
+        
+        integer :: unit, i
+        character(len=100) :: line
+        
+        open(newunit=unit, file=filename, status='old', action='read')
+        
+        ! Skip header
+        do
+            read(unit, '(a)') line
+            if (line == 'VERTICES') exit
+        end do
+        
+        ! Read vertices
+        read(unit, *) this%n_vertices
+        allocate(this%vertices(2, this%n_vertices))
+        do i = 1, this%n_vertices
+            read(unit, *) this%vertices(:, i)
+        end do
+        
+        ! Read triangles
+        read(unit, '(a)') line  ! Should be 'TRIANGLES'
+        read(unit, *) this%n_triangles
+        allocate(this%triangles(3, this%n_triangles))
+        do i = 1, this%n_triangles
+            read(unit, *) this%triangles(:, i)
+        end do
+        
+        close(unit)
+        
+    end subroutine load_from_file
+    
+    subroutine destroy(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: i
+        
+        if (allocated(this%vertices)) deallocate(this%vertices)
+        if (allocated(this%triangles)) deallocate(this%triangles)
+        if (allocated(this%edges)) deallocate(this%edges)
+        if (allocated(this%edge_to_triangles)) deallocate(this%edge_to_triangles)
+        if (allocated(this%boundary_edges)) deallocate(this%boundary_edges)
+        if (allocated(this%is_boundary_vertex)) deallocate(this%is_boundary_vertex)
+        
+        if (allocated(this%vertex_to_triangles)) then
+            do i = 1, size(this%vertex_to_triangles)
+                if (allocated(this%vertex_to_triangles(i)%items)) then
+                    deallocate(this%vertex_to_triangles(i)%items)
+                end if
+            end do
+            deallocate(this%vertex_to_triangles)
+        end if
+        
+        if (allocated(this%vertex_to_vertices)) then
+            do i = 1, size(this%vertex_to_vertices)
+                if (allocated(this%vertex_to_vertices(i)%items)) then
+                    deallocate(this%vertex_to_vertices(i)%items)
+                end if
+            end do
+            deallocate(this%vertex_to_vertices)
+        end if
+        
+        this%n_vertices = 0
+        this%n_triangles = 0
+        this%n_edges = 0
+        this%n_boundary_edges = 0
+        
+    end subroutine destroy
+
+end module fortfem_mesh_2d
