@@ -7,11 +7,13 @@ module function_space_module
     public :: function_space_t, P1, P2, create_P1_space, create_P2_space
     public :: trial_function_t, test_function_t
     public :: vector_function_space_t, vector_trial_function_t, vector_test_function_t
+    public :: create_edge_space  ! For Nédélec edge elements
     
     ! Element types
     integer, parameter :: ELEMENT_P1 = 1
     integer, parameter :: ELEMENT_P2 = 2
     integer, parameter :: ELEMENT_RT0 = 3
+    integer, parameter :: ELEMENT_EDGE = 4  ! Nédélec edge elements
     
     ! Function space definition
     type :: function_space_t
@@ -370,5 +372,20 @@ contains
         
         this%name = other%name
     end subroutine vector_test_function_assign
+    
+    ! Create edge element function space (Nédélec H(curl))
+    subroutine create_edge_space(mesh, space)
+        type(mesh_2d_t), intent(in) :: mesh
+        type(function_space_t), intent(out) :: space
+        
+        space%mesh = mesh
+        space%element_type = ELEMENT_EDGE
+        space%n_components = 2  ! Vector field in 2D
+        
+        ! For lowest order Nédélec: 1 DOF per edge
+        ! Each triangle has 3 edges, but edges are shared
+        ! Approximate: 3 * n_triangles (will be refined in actual implementation)
+        space%n_dofs = 3 * mesh%n_triangles
+    end subroutine create_edge_space
 
 end module function_space_module

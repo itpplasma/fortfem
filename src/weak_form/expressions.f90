@@ -8,6 +8,7 @@ module expressions_module
     public :: operator(*), operator(+), operator(-), operator(/)
     public :: dx, ds  ! Integration measures (dx=domain, ds=boundary)
     public :: trial_to_expression, test_to_expression, gradient_of_expression
+    public :: vector_trial_to_expression, vector_test_to_expression
     
     ! Expression types
     integer, parameter :: EXPR_FUNCTION = 1
@@ -33,8 +34,11 @@ module expressions_module
         ! For function expressions
         type(trial_function_t), allocatable :: trial_func
         type(test_function_t), allocatable :: test_func
+        type(vector_trial_function_t), allocatable :: vector_trial_func
+        type(vector_test_function_t), allocatable :: vector_test_func
         logical :: is_trial = .false.
         logical :: is_test = .false.
+        logical :: is_vector = .false.
         
         ! For constant values
         real(dp) :: const_value = 0.0_dp
@@ -83,10 +87,14 @@ module expressions_module
     
     interface div
         module procedure divergence_of_expression
+        module procedure div_vector_trial
+        module procedure div_vector_test
     end interface
     
     interface curl
         module procedure curl_of_expression
+        module procedure curl_vector_trial
+        module procedure curl_vector_test
     end interface
     
     interface inner
@@ -122,6 +130,32 @@ contains
         expr%test_func = v
         expr%is_test = .true.
     end function test_to_expression
+    
+    ! Create expression from vector trial function
+    function vector_trial_to_expression(u) result(expr)
+        type(vector_trial_function_t), intent(in) :: u
+        type(expression_t) :: expr
+        
+        expr%expr_type = EXPR_FUNCTION
+        expr%rank = 1  ! Vector function
+        allocate(expr%vector_trial_func)
+        expr%vector_trial_func = u
+        expr%is_trial = .true.
+        expr%is_vector = .true.
+    end function vector_trial_to_expression
+    
+    ! Create expression from vector test function
+    function vector_test_to_expression(v) result(expr)
+        type(vector_test_function_t), intent(in) :: v
+        type(expression_t) :: expr
+        
+        expr%expr_type = EXPR_FUNCTION
+        expr%rank = 1  ! Vector function
+        allocate(expr%vector_test_func)
+        expr%vector_test_func = v
+        expr%is_test = .true.
+        expr%is_vector = .true.
+    end function vector_test_to_expression
     
     ! Gradient operator
     function gradient_of_expression(expr) result(grad_expr)
@@ -257,6 +291,50 @@ contains
         curl_expr%left = expr
     end function curl_of_expression
     
+    ! Curl of vector trial function
+    function curl_vector_trial(u) result(curl_expr)
+        type(vector_trial_function_t), intent(in) :: u
+        type(expression_t) :: curl_expr
+        
+        curl_expr%expr_type = EXPR_CURL
+        curl_expr%rank = 0  ! Curl of 2D vector is scalar
+        allocate(curl_expr%left)
+        curl_expr%left = vector_trial_to_expression(u)
+    end function curl_vector_trial
+    
+    ! Curl of vector test function
+    function curl_vector_test(v) result(curl_expr)
+        type(vector_test_function_t), intent(in) :: v
+        type(expression_t) :: curl_expr
+        
+        curl_expr%expr_type = EXPR_CURL
+        curl_expr%rank = 0  ! Curl of 2D vector is scalar
+        allocate(curl_expr%left)
+        curl_expr%left = vector_test_to_expression(v)
+    end function curl_vector_test
+    
+    ! Div of vector trial function
+    function div_vector_trial(u) result(div_expr)
+        type(vector_trial_function_t), intent(in) :: u
+        type(expression_t) :: div_expr
+        
+        div_expr%expr_type = EXPR_DIVERGENCE
+        div_expr%rank = 0  ! Div of vector is scalar
+        allocate(div_expr%left)
+        div_expr%left = vector_trial_to_expression(u)
+    end function div_vector_trial
+    
+    ! Div of vector test function
+    function div_vector_test(v) result(div_expr)
+        type(vector_test_function_t), intent(in) :: v
+        type(expression_t) :: div_expr
+        
+        div_expr%expr_type = EXPR_DIVERGENCE
+        div_expr%rank = 0  ! Div of vector is scalar
+        allocate(div_expr%left)
+        div_expr%left = vector_test_to_expression(v)
+    end function div_vector_test
+    
     ! Inner product (FEniCS style)
     function inner_product(expr1, expr2) result(prod)
         type(expression_t), intent(in) :: expr1, expr2
@@ -346,6 +424,8 @@ contains
         
         if (allocated(this%trial_func)) deallocate(this%trial_func)
         if (allocated(this%test_func)) deallocate(this%test_func)
+        if (allocated(this%vector_trial_func)) deallocate(this%vector_trial_func)
+        if (allocated(this%vector_test_func)) deallocate(this%vector_test_func)
         if (allocated(this%left)) then
             call this%left%destroy()
             deallocate(this%left)
@@ -370,6 +450,7 @@ contains
         this%rank = other%rank
         this%is_trial = other%is_trial
         this%is_test = other%is_test
+        this%is_vector = other%is_vector
         this%const_value = other%const_value
         this%coord_index = other%coord_index
         this%measure_type = other%measure_type
@@ -383,6 +464,16 @@ contains
         if (allocated(other%test_func)) then
             allocate(this%test_func)
             this%test_func = other%test_func
+        end if
+        
+        if (allocated(other%vector_trial_func)) then
+            allocate(this%vector_trial_func)
+            this%vector_trial_func = other%vector_trial_func
+        end if
+        
+        if (allocated(other%vector_test_func)) then
+            allocate(this%vector_test_func)
+            this%vector_test_func = other%vector_test_func
         end if
         
         if (allocated(other%left)) then

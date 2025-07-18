@@ -10,12 +10,15 @@ module forms_module
     public :: dx, ds
     public :: solve
     public :: trial_to_expression, test_to_expression
+    public :: vector_trial_to_expression, vector_test_to_expression
     
     ! Gradient interfaces
     interface grad
         module procedure grad_trial
         module procedure grad_test
     end interface
+    
+    ! Note: curl and div interfaces are already provided by expressions_module
     
 contains
 
@@ -34,7 +37,7 @@ contains
         
         grad_expr = grad(test_to_expression(v))
     end function grad_test
-
+    
     ! Solve a variational problem (placeholder)
     subroutine solve(a_expr, L_expr, space, solution, bc)
         type(expression_t), intent(in) :: a_expr  ! Bilinear form a(u,v)
