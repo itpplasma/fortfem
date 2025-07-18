@@ -1,6 +1,6 @@
 program plot_basis
     ! Example: Plot P1 basis functions on reference triangle
-    use fortplotlib, only: plt
+    use fortplot
     use fortfem
     implicit none
     
@@ -28,12 +28,11 @@ program plot_basis
     end do
     
     ! Plot using fortplotlib
-    call plt%figure()
-    call plt%contourf(x, y, z)
-    call plt%colorbar()
-    call plt%xlabel('x')
-    call plt%ylabel('y')
-    call plt%title('P1 Basis Function on Reference Triangle')
-    call plt%savefig('p1_basis.png')
+    call figure()
+    call contour(x, y, z)
+    call xlabel('x')
+    call ylabel('y')
+    call title('P1 Basis Function on Reference Triangle')
+    call savefig('p1_basis.png')
     
 end program plot_basis
