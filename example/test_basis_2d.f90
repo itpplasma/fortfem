@@ -3,7 +3,7 @@ program test_basis_2d_example
     implicit none
     
     type(basis_p1_2d_t) :: basis
-    real(dp) :: val, grad(2)
+    real(dp) :: val, gradient(2)
     real(dp) :: vertices(2,3), jac(2,2), det_j
     real(dp) :: x, y
     integer :: i
@@ -40,8 +40,8 @@ program test_basis_2d_example
     print *, ""
     print *, "Test 3: Basis function gradients (constant for P1)"
     do i = 1, 3
-        grad = basis%grad(i, 0.0_dp, 0.0_dp)
-        print '(a,i0,a,2f8.3)', "grad(phi_", i, ") = ", grad
+        gradient = basis%grad(i, 0.0_dp, 0.0_dp)
+        print '(a,i0,a,2f8.3)', "grad(phi_", i, ") = ", gradient
     end do
     
     ! Test 4: Physical transformation

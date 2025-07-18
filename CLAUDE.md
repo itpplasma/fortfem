@@ -66,6 +66,16 @@ fortfem/
 - Use associate blocks for unused dummy arguments
 - Real precision: `dp = kind(0.0d0)`
 
+### Critical Fortran Design Principles
+- **NO POINTERS**: Never use pointers in Fortran. Always use allocatables instead.
+- **DEEP COPY ASSIGNMENT**: When a type contains allocatable members, always overload the assignment operator (=) with deep-copy semantics.
+- **ALLOCATABLE FUNCTION RETURNS**: Prefer subroutines with intent(out) allocatable arguments over functions returning allocatables. If you do write a function returning an allocatable, ensure that the return value is guaranteed to be allocated.
+- **SAFE ALLOCATION**: Always check if allocatable is already allocated before deallocating or reallocating.
+- **CLEAN INTERFACES**: Prefer explicit interfaces over implicit ones.
+- **INTENT EVERYWHERE**: Always specify intent for all dummy arguments.
+- **PURE/ELEMENTAL**: Use pure and elemental procedures where possible for better optimization and safety.
+- **STRICT TDD**: You MUST always write tests first. No exceptions.
+
 ### Testing Strategy
 - Strict Test-Driven Development (TDD)
 - Target >90% code coverage

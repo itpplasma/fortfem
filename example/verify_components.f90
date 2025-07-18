@@ -5,7 +5,7 @@ program verify_components
     type(basis_p1_2d_t) :: basis
     type(assembly_2d_t) :: assembly
     real(dp) :: vertices(2,3), mass(3,3), stiff(3,3), load(3)
-    real(dp) :: jac(2,2), det_j, grad(2), phi_val
+    real(dp) :: jac(2,2), det_j, gradient(2), phi_val
     real(dp) :: xi, eta, x, y
     integer :: i, j
     
@@ -31,8 +31,8 @@ program verify_components
     print *, ""
     print *, "  Basis gradients (constant):"
     do i = 1, 3
-        grad = basis%grad(i, 0.0_dp, 0.0_dp)
-        print '(a,i0,a,2f8.3)', "    grad(phi_", i, ") = ", grad
+        gradient = basis%grad(i, 0.0_dp, 0.0_dp)
+        print '(a,i0,a,2f8.3)', "    grad(phi_", i, ") = ", gradient
     end do
     
     ! Test 2: Coordinate transformation
