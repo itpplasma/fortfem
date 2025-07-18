@@ -4,7 +4,6 @@ program plot_basis
     use fortfem
     implicit none
     
-    integer, parameter :: dp = kind(0.0d0)
     integer, parameter :: n = 50
     real(dp) :: x(n), y(n), z(n,n)
     integer :: i, j

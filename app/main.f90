@@ -1,6 +1,7 @@
 program main
-  use fortfem, only: say_hello
+  use fortfem
   implicit none
 
-  call say_hello()
+  print *, "FortFEM - Modern Fortran Finite Element Library"
+  print *, "Run examples with: fpm run --example <name>"
 end program main
