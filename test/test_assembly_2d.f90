@@ -185,7 +185,7 @@ contains
         type(error_type), allocatable, intent(out) :: error
         type(mesh_2d_t) :: mesh
         type(assembly_2d_t) :: assembly
-        type(sparse_triplet_t) :: triplet
+        type(triplet_matrix_t) :: triplet
         real(dp), allocatable :: rhs(:)
         integer :: nnz_estimate
         
