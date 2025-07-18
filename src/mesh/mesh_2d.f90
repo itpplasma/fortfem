@@ -29,6 +29,11 @@ module fortfem_mesh_2d
     contains
         procedure :: create_rectangular
         procedure :: build_connectivity
+        procedure :: build_edge_connectivity
+        procedure :: get_edge_vertices
+        procedure :: get_edge_triangles
+        procedure :: get_edge_length_tangent
+        procedure :: is_boundary_edge
         procedure :: find_boundary
         procedure :: compute_areas
         procedure :: save_to_file
@@ -142,6 +147,144 @@ contains
         deallocate(temp_list)
         
     end subroutine build_connectivity
+    
+    subroutine build_edge_connectivity(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        ! Build edge connectivity for H(curl) finite elements
+        ! This calls the existing build_connectivity but ensures edges are built
+        call this%build_connectivity()
+        
+        ! Ensure boundary edges are identified
+        call this%find_boundary()
+    end subroutine build_edge_connectivity
+    
+    subroutine get_edge_vertices(this, edge_index, vertices)
+        class(mesh_2d_t), intent(in) :: this
+        integer, intent(in) :: edge_index
+        integer, intent(out) :: vertices(2)
+        
+        if (edge_index < 1 .or. edge_index > this%n_edges) then
+            error stop "Edge index out of bounds"
+        end if
+        
+        if (.not. allocated(this%edges)) then
+            error stop "Edge connectivity not built. Call build_edge_connectivity first"
+        end if
+        
+        vertices(1) = this%edges(1, edge_index)
+        vertices(2) = this%edges(2, edge_index)
+    end subroutine get_edge_vertices
+    
+    function is_boundary_edge(this, edge_index) result(is_boundary)
+        class(mesh_2d_t), intent(in) :: this
+        integer, intent(in) :: edge_index
+        logical :: is_boundary
+        
+        integer :: i
+        
+        if (edge_index < 1 .or. edge_index > this%n_edges) then
+            error stop "Edge index out of bounds"
+        end if
+        
+        if (.not. allocated(this%boundary_edges)) then
+            error stop "Boundary edges not identified. Call build_edge_connectivity first"
+        end if
+        
+        ! Check if edge is in boundary_edges array
+        is_boundary = .false.
+        do i = 1, this%n_boundary_edges
+            if (this%boundary_edges(i) == edge_index) then
+                is_boundary = .true.
+                return
+            end if
+        end do
+    end function is_boundary_edge
+    
+    subroutine get_edge_triangles(this, edge_index, triangles)
+        class(mesh_2d_t), intent(in) :: this
+        integer, intent(in) :: edge_index
+        integer, allocatable, intent(out) :: triangles(:)
+        
+        integer :: t, i, j, v1, v2, count
+        integer, allocatable :: temp_triangles(:)
+        
+        if (edge_index < 1 .or. edge_index > this%n_edges) then
+            error stop "Edge index out of bounds"
+        end if
+        
+        if (.not. allocated(this%edges)) then
+            error stop "Edge connectivity not built. Call build_edge_connectivity first"
+        end if
+        
+        ! Get edge vertices
+        v1 = this%edges(1, edge_index)
+        v2 = this%edges(2, edge_index)
+        
+        ! Allocate temporary array for worst case
+        allocate(temp_triangles(2))
+        count = 0
+        
+        ! Find triangles containing this edge
+        do t = 1, this%n_triangles
+            do i = 1, 3
+                j = mod(i, 3) + 1
+                if ((this%triangles(i, t) == v1 .and. this%triangles(j, t) == v2) .or. &
+                    (this%triangles(i, t) == v2 .and. this%triangles(j, t) == v1)) then
+                    count = count + 1
+                    if (count > 2) then
+                        error stop "More than 2 triangles share an edge - invalid mesh"
+                    end if
+                    temp_triangles(count) = t
+                    exit
+                end if
+            end do
+        end do
+        
+        ! Copy to output array
+        allocate(triangles(count))
+        triangles = temp_triangles(1:count)
+        
+        deallocate(temp_triangles)
+    end subroutine get_edge_triangles
+    
+    subroutine get_edge_length_tangent(this, edge_index, length, tangent)
+        class(mesh_2d_t), intent(in) :: this
+        integer, intent(in) :: edge_index
+        real(dp), intent(out) :: length, tangent(2)
+        
+        integer :: v1, v2
+        real(dp) :: dx, dy
+        
+        if (edge_index < 1 .or. edge_index > this%n_edges) then
+            error stop "Edge index out of bounds"
+        end if
+        
+        if (.not. allocated(this%edges)) then
+            error stop "Edge connectivity not built. Call build_edge_connectivity first"
+        end if
+        
+        ! Get edge vertices
+        v1 = this%edges(1, edge_index)
+        v2 = this%edges(2, edge_index)
+        
+        ! Compute edge vector
+        dx = this%vertices(1, v2) - this%vertices(1, v1)
+        dy = this%vertices(2, v2) - this%vertices(2, v1)
+        
+        ! Compute edge length
+        length = sqrt(dx**2 + dy**2)
+        
+        ! Compute unit tangent vector
+        if (length > 0.0_dp) then
+            tangent(1) = dx / length
+            tangent(2) = dy / length
+        else
+            ! Zero-length edge (degenerate)
+            tangent(1) = 0.0_dp
+            tangent(2) = 0.0_dp
+        end if
+    end subroutine get_edge_length_tangent
     
     subroutine build_edges_from_triangles(this)
         class(mesh_2d_t), intent(inout) :: this
