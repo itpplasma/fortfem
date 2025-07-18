@@ -185,21 +185,87 @@ contains
     subroutine interpolate_to_grid(solution, grid_solution)
         real(dp), intent(in) :: solution(:)
         real(dp), intent(out) :: grid_solution(ngrid, ngrid)
-        integer :: i, j, vertex_idx
+        integer :: i, j
         real(dp) :: x, y
         
-        ! Simple nearest neighbor interpolation for structured grid
+        ! Proper finite element interpolation
         do i = 1, ngrid
             do j = 1, ngrid
                 x = x_grid(i)
                 y = y_grid(j)
-                
-                ! Find closest vertex (works for structured rectangular mesh)
-                vertex_idx = find_closest_vertex(x, y)
-                grid_solution(i, j) = solution(vertex_idx)
+                grid_solution(i, j) = finite_element_interpolate(x, y, solution)
             end do
         end do
     end subroutine interpolate_to_grid
+    
+    function finite_element_interpolate(x_pt, y_pt, solution) result(value)
+        real(dp), intent(in) :: x_pt, y_pt
+        real(dp), intent(in) :: solution(:)
+        real(dp) :: value
+        integer :: elem, i
+        real(dp) :: vertices(2,3), xi, eta, phi_vals(3)
+        logical :: inside
+        
+        value = 0.0_dp
+        
+        ! Find which element contains the point
+        do elem = 1, mesh%n_triangles
+            ! Get element vertices
+            do i = 1, 3
+                vertices(:,i) = mesh%vertices(:, mesh%triangles(i,elem))
+            end do
+            
+            ! Check if point is inside this triangle
+            call point_in_triangle(x_pt, y_pt, vertices, inside, xi, eta)
+            
+            if (inside) then
+                ! Compute P1 basis function values
+                phi_vals(1) = 1.0_dp - xi - eta
+                phi_vals(2) = xi
+                phi_vals(3) = eta
+                
+                ! Interpolate solution
+                do i = 1, 3
+                    value = value + solution(mesh%triangles(i,elem)) * phi_vals(i)
+                end do
+                return
+            end if
+        end do
+        
+        ! If point not found, use nearest neighbor fallback
+        value = solution(find_closest_vertex(x_pt, y_pt))
+        
+    end function finite_element_interpolate
+    
+    subroutine point_in_triangle(x, y, vertices, inside, xi, eta)
+        real(dp), intent(in) :: x, y, vertices(2,3)
+        logical, intent(out) :: inside
+        real(dp), intent(out) :: xi, eta
+        
+        real(dp) :: det, dx, dy
+        real(dp) :: v0(2), v1(2), v2(2)
+        
+        v0 = vertices(:,1)
+        v1 = vertices(:,2)
+        v2 = vertices(:,3)
+        
+        ! Compute barycentric coordinates
+        det = (v1(1) - v0(1)) * (v2(2) - v0(2)) - (v2(1) - v0(1)) * (v1(2) - v0(2))
+        
+        if (abs(det) < 1e-10) then
+            inside = .false.
+            return
+        end if
+        
+        dx = x - v0(1)
+        dy = y - v0(2)
+        
+        xi = ((v2(2) - v0(2)) * dx - (v2(1) - v0(1)) * dy) / det
+        eta = (-(v1(2) - v0(2)) * dx + (v1(1) - v0(1)) * dy) / det
+        
+        inside = (xi >= 0.0_dp .and. eta >= 0.0_dp .and. xi + eta <= 1.0_dp)
+        
+    end subroutine point_in_triangle
     
     function find_closest_vertex(x, y) result(idx)
         real(dp), intent(in) :: x, y
@@ -226,12 +292,11 @@ contains
         print *, ""
         print *, "Creating line plots along y = 0.5..."
         
-        ! Create line data along y = 0.5
+        ! Create line data along y = 0.5 using proper interpolation
         do i = 1, ngrid
             x_line(i) = real(i-1, dp) / real(ngrid-1, dp)
-            vertex_idx = find_closest_vertex(x_line(i), 0.5_dp)
-            y_lapack(i) = sol_lapack(vertex_idx)
-            y_umfpack(i) = sol_umfpack(vertex_idx)
+            y_lapack(i) = finite_element_interpolate(x_line(i), 0.5_dp, sol_lapack)
+            y_umfpack(i) = finite_element_interpolate(x_line(i), 0.5_dp, sol_umfpack)
             y_exact(i) = sin(pi * x_line(i)) * sin(pi * 0.5_dp)
         end do
         
