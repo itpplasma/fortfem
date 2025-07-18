@@ -296,18 +296,18 @@ contains
         real(dp), intent(in) :: xi, eta, triangle_area
         real(dp), intent(out) :: basis_values(2, 3)
         
-        ! RT0 basis functions on reference triangle
-        ! Edge 0: from vertex 1 to vertex 2
-        basis_values(1, 1) = xi
-        basis_values(2, 1) = eta - 1.0_dp
+        ! Correct Nédélec basis functions on reference triangle (H(curl) conforming)
+        ! Edge 1: (0, xi)
+        basis_values(1, 1) = 0.0_dp
+        basis_values(2, 1) = xi
         
-        ! Edge 1: from vertex 2 to vertex 3  
-        basis_values(1, 2) = xi
-        basis_values(2, 2) = eta
+        ! Edge 2: (1-eta, 0)
+        basis_values(1, 2) = 1.0_dp - eta
+        basis_values(2, 2) = 0.0_dp
         
-        ! Edge 2: from vertex 3 to vertex 1
-        basis_values(1, 3) = xi - 1.0_dp
-        basis_values(2, 3) = eta
+        ! Edge 3: (eta, 1-xi)
+        basis_values(1, 3) = eta
+        basis_values(2, 3) = 1.0_dp - xi
     end subroutine
 
     function compute_triangle_area(mesh, triangle_idx) result(area)

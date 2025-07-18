@@ -75,16 +75,18 @@ contains
         real(dp), intent(in) :: xi, eta, triangle_area
         real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
         
-        ! Lowest order Nédélec elements (RT0)
-        ! Edge 1: (1-eta, 0)
-        values(1, 1) = 1.0_dp - eta
-        values(2, 1) = 0.0_dp
+        ! Lowest order Nédélec elements (H(curl) conforming)
+        ! These are RT0 elements rotated by 90 degrees for tangential continuity
         
-        ! Edge 2: (0, xi)
-        values(1, 2) = 0.0_dp
-        values(2, 2) = xi
+        ! Edge 1: from (1,0) to (0,1) - tangent direction (-1,1)/√2
+        values(1, 1) = 0.0_dp
+        values(2, 1) = xi
         
-        ! Edge 3: (eta, 1-xi)
+        ! Edge 2: from (0,1) to (0,0) - tangent direction (0,-1)
+        values(1, 2) = 1.0_dp - eta
+        values(2, 2) = 0.0_dp
+        
+        ! Edge 3: from (0,0) to (1,0) - tangent direction (1,0)  
         values(1, 3) = eta
         values(2, 3) = 1.0_dp - xi
     end subroutine evaluate_edge_basis_2d
@@ -95,9 +97,16 @@ contains
         real(dp), intent(out) :: curls(3)  ! Scalar curl in 2D
         
         ! Curl of Nédélec elements (constant per element)
+        ! For Nédélec: curl(φᵢ) = ∂φᵢʸ/∂x - ∂φᵢˣ/∂y
+        
+        ! Edge 1: φ₁ = (0, ξ), curl = ∂ξ/∂x - ∂0/∂y = 1
         curls(1) = 1.0_dp / triangle_area
+        
+        ! Edge 2: φ₂ = (1-η, 0), curl = ∂0/∂x - ∂(1-η)/∂y = 0 - (-1) = 1  
         curls(2) = 1.0_dp / triangle_area
-        curls(3) = -1.0_dp / triangle_area
+        
+        ! Edge 3: φ₃ = (η, 1-ξ), curl = ∂(1-ξ)/∂x - ∂η/∂y = -1 - 1 = -2
+        curls(3) = -2.0_dp / triangle_area
     end subroutine evaluate_edge_basis_curl_2d
     
     ! Evaluate divergence of edge basis functions
