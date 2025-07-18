@@ -17,6 +17,13 @@ module fortfem_mesh_2d
         integer, allocatable :: edges(:,:)      ! (2, n_edges) - vertex indices
         integer, allocatable :: edge_to_triangles(:,:)  ! (2, n_edges) - triangle indices
         
+        ! Edge DOF numbering for H(curl) elements
+        integer :: n_edge_dofs = 0
+        integer, allocatable :: edge_to_dof(:)    ! (n_edges) - maps edge to DOF number
+        integer, allocatable :: dof_to_edge(:)    ! (n_edge_dofs) - maps DOF to edge number
+        integer :: n_interior_dofs = 0
+        integer :: n_boundary_dofs = 0
+        
         ! Boundary
         integer :: n_boundary_edges = 0
         integer, allocatable :: boundary_edges(:)     ! Indices of boundary edges
@@ -34,6 +41,11 @@ module fortfem_mesh_2d
         procedure :: get_edge_triangles
         procedure :: get_edge_length_tangent
         procedure :: is_boundary_edge
+        procedure :: build_edge_dof_numbering
+        procedure :: get_n_edge_dofs
+        procedure :: get_last_interior_dof
+        procedure :: get_first_boundary_dof
+        procedure :: get_triangle_edge_dofs
         procedure :: find_boundary
         procedure :: compute_areas
         procedure :: save_to_file
@@ -286,6 +298,104 @@ contains
         end if
     end subroutine get_edge_length_tangent
     
+    subroutine build_edge_dof_numbering(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: i, dof_count
+        
+        if (.not. allocated(this%edges)) then
+            error stop "Edge connectivity not built. Call build_edge_connectivity first"
+        end if
+        
+        ! RT0/Nédélec lowest order: one DOF per edge
+        this%n_edge_dofs = this%n_edges
+        
+        ! Allocate DOF mapping arrays
+        allocate(this%edge_to_dof(this%n_edges))
+        allocate(this%dof_to_edge(this%n_edge_dofs))
+        
+        ! Number interior DOFs first (0-based indexing)
+        dof_count = 0
+        do i = 1, this%n_edges
+            if (.not. this%is_boundary_edge(i)) then
+                this%edge_to_dof(i) = dof_count
+                this%dof_to_edge(dof_count + 1) = i
+                dof_count = dof_count + 1
+            end if
+        end do
+        
+        this%n_interior_dofs = dof_count
+        
+        ! Number boundary DOFs next
+        do i = 1, this%n_edges
+            if (this%is_boundary_edge(i)) then
+                this%edge_to_dof(i) = dof_count
+                this%dof_to_edge(dof_count + 1) = i
+                dof_count = dof_count + 1
+            end if
+        end do
+        
+        this%n_boundary_dofs = dof_count - this%n_interior_dofs
+    end subroutine build_edge_dof_numbering
+    
+    function get_n_edge_dofs(this) result(n_dofs)
+        class(mesh_2d_t), intent(in) :: this
+        integer :: n_dofs
+        
+        n_dofs = this%n_edge_dofs
+    end function get_n_edge_dofs
+    
+    function get_last_interior_dof(this) result(last_dof)
+        class(mesh_2d_t), intent(in) :: this
+        integer :: last_dof
+        
+        last_dof = this%n_interior_dofs - 1
+    end function get_last_interior_dof
+    
+    function get_first_boundary_dof(this) result(first_dof)
+        class(mesh_2d_t), intent(in) :: this
+        integer :: first_dof
+        
+        first_dof = this%n_interior_dofs
+    end function get_first_boundary_dof
+    
+    subroutine get_triangle_edge_dofs(this, triangle_index, edge_dofs)
+        class(mesh_2d_t), intent(in) :: this
+        integer, intent(in) :: triangle_index
+        integer, intent(out) :: edge_dofs(3)
+        
+        integer :: i, j, v1, v2, edge_index
+        
+        if (triangle_index < 1 .or. triangle_index > this%n_triangles) then
+            error stop "Triangle index out of bounds"
+        end if
+        
+        if (.not. allocated(this%edge_to_dof)) then
+            error stop "Edge DOF numbering not built. Call build_edge_dof_numbering first"
+        end if
+        
+        ! Find the 3 edges of this triangle
+        do i = 1, 3
+            j = mod(i, 3) + 1
+            v1 = min(this%triangles(i, triangle_index), this%triangles(j, triangle_index))
+            v2 = max(this%triangles(i, triangle_index), this%triangles(j, triangle_index))
+            
+            ! Find this edge in the edge list
+            edge_index = 0
+            do edge_index = 1, this%n_edges
+                if (this%edges(1, edge_index) == v1 .and. this%edges(2, edge_index) == v2) then
+                    exit
+                end if
+            end do
+            
+            if (edge_index > this%n_edges) then
+                error stop "Edge not found in triangle"
+            end if
+            
+            edge_dofs(i) = this%edge_to_dof(edge_index)
+        end do
+    end subroutine get_triangle_edge_dofs
+    
     subroutine build_edges_from_triangles(this)
         class(mesh_2d_t), intent(inout) :: this
         
@@ -481,6 +591,8 @@ contains
         if (allocated(this%edge_to_triangles)) deallocate(this%edge_to_triangles)
         if (allocated(this%boundary_edges)) deallocate(this%boundary_edges)
         if (allocated(this%is_boundary_vertex)) deallocate(this%is_boundary_vertex)
+        if (allocated(this%edge_to_dof)) deallocate(this%edge_to_dof)
+        if (allocated(this%dof_to_edge)) deallocate(this%dof_to_edge)
         
         if (allocated(this%vertex_to_triangles)) then
             do i = 1, size(this%vertex_to_triangles)
@@ -504,6 +616,9 @@ contains
         this%n_triangles = 0
         this%n_edges = 0
         this%n_boundary_edges = 0
+        this%n_edge_dofs = 0
+        this%n_interior_dofs = 0
+        this%n_boundary_dofs = 0
         
     end subroutine destroy
 

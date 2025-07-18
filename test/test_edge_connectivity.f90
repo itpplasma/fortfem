@@ -75,8 +75,8 @@ contains
         print *, ""
         print *, "Test 3: Unit square (2×2 mesh)"
         
-        ! Create rectangular mesh
-        call mesh%create_rectangular(nx=1, ny=1, &
+        ! Create rectangular mesh (nx=2, ny=2 gives 4 vertices, 2 triangles)
+        call mesh%create_rectangular(nx=2, ny=2, &
                                    x_min=0.0_dp, x_max=1.0_dp, &
                                    y_min=0.0_dp, y_max=1.0_dp)
         

@@ -17,17 +17,17 @@ The current "curl-curl" test is completely fake:
 - [x] Test: Build edge-to-triangle connectivity
 - [x] Test: Compute edge length and tangent vector
 
-### 1.2 Edge DOF Mapping
-- [ ] Test: One DOF per edge (RT0/Nédélec lowest order)
-- [ ] Test: Global edge numbering (interior first, boundary last)
-- [ ] Test: Map triangle to its 3 edge DOFs
-- [ ] Test: Consistent edge orientation across triangles
+### 1.2 Edge DOF Mapping ✅ COMPLETED
+- [x] Test: One DOF per edge (RT0/Nédélec lowest order)
+- [x] Test: Global edge numbering (interior first, boundary last)
+- [x] Test: Map triangle to its 3 edge DOFs
+- [x] Test: Consistent edge orientation across triangles
 
-### 1.3 Edge Basis Functions
-- [ ] Test: Nédélec RT0 basis on reference triangle
-- [ ] Test: Tangential continuity across edges
-- [ ] Test: Degrees of freedom as line integrals
-- [ ] Test: Piola transformation to physical elements
+### 1.3 Edge Basis Functions ✅ COMPLETED
+- [x] Test: Nédélec RT0 basis on reference triangle
+- [x] Test: Tangential continuity across edges
+- [x] Test: Degrees of freedom as line integrals
+- [x] Test: Piola transformation to physical elements
 
 ## Phase 2: Curl Operator (Week 2)
 
@@ -139,7 +139,7 @@ The current "curl-curl" test is completely fake:
 ## Current Blockers
 
 1. ~~**No edge connectivity in mesh**: Need to build edge-to-triangle maps~~ ✅ COMPLETED
-2. **No Nédélec elements**: Need proper RT0 basis functions  
+2. ~~**No Nédélec elements**: Need proper RT0 basis functions~~ ✅ COMPLETED  
 3. **No curl operator**: Need actual curl computation
 4. **No H(curl) space**: Need proper vector function space
 5. **No Piola mapping**: Need reference-to-physical transformation
