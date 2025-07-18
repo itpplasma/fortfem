@@ -94,3 +94,6 @@ fortfem/
 - Tests on Ubuntu and macOS with gfortran
 - Automatic codecov upload
 - Example compilation verification
+
+## Code Maintenance Principles
+- Always delete obsolete parts of the code.
