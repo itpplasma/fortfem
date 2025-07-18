@@ -1,6 +1,8 @@
 module fortfem_solver_interface
     use fortfem_kinds
     use fortfem_sparse_matrix
+    use fortfem_umfpack_interface
+    use, intrinsic :: iso_c_binding
     implicit none
     private
     
@@ -23,8 +25,11 @@ module fortfem_solver_interface
     
     ! SuiteSparse solver (UMFPACK)
     type, extends(linear_solver_t), public :: suitesparse_solver_t
-        integer(kind=8) :: symbolic = 0  ! UMFPACK symbolic pointer
-        integer(kind=8) :: numeric = 0   ! UMFPACK numeric pointer
+        type(c_ptr) :: symbolic = c_null_ptr
+        type(c_ptr) :: numeric = c_null_ptr
+        real(c_double) :: control(UMFPACK_CONTROL)
+        real(c_double) :: info(UMFPACK_INFO)
+        logical :: initialized = .false.
     contains
         procedure :: init => suitesparse_init
         procedure :: solve => suitesparse_solve
@@ -118,10 +123,9 @@ contains
     subroutine suitesparse_init(this)
         class(suitesparse_solver_t), intent(inout) :: this
         
-        ! Initialize UMFPACK control parameters
-        ! This would call umfpack_di_defaults in real implementation
-        this%symbolic = 0
-        this%numeric = 0
+        ! Get default control parameters
+        call umfpack_di_defaults(this%control)
+        this%initialized = .true.
         
     end subroutine suitesparse_init
     
@@ -132,27 +136,71 @@ contains
         real(dp), intent(out) :: x(:)
         integer, intent(out) :: info
         
-        ! Placeholder for SuiteSparse implementation
-        ! In real implementation, this would:
-        ! 1. Convert CSR to CSC (UMFPACK uses CSC)
-        ! 2. Call umfpack_di_symbolic
-        ! 3. Call umfpack_di_numeric
-        ! 4. Call umfpack_di_solve
+        ! CSC format arrays
+        integer, allocatable :: col_ptr(:), row_idx(:)
+        real(dp), allocatable :: csc_values(:)
+        integer :: status
         
-        ! For now, just copy b to x and set error
-        x = b
-        info = -1  ! Not implemented
+        ! Convert CSR to CSC (UMFPACK uses CSC)
+        allocate(col_ptr(A%n+1), row_idx(A%nnz), csc_values(A%nnz))
+        call csr_to_csc(A%n, A%nnz, A%row_ptr, A%col_idx, A%values, &
+                       col_ptr, row_idx, csc_values)
         
-        print *, "WARNING: SuiteSparse solver not yet implemented"
+        ! Convert to 0-based indexing for C
+        col_ptr = col_ptr - 1
+        row_idx = row_idx - 1
+        
+        ! Free previous factorization if exists
+        if (c_associated(this%symbolic)) then
+            call umfpack_di_free_symbolic(this%symbolic)
+        end if
+        if (c_associated(this%numeric)) then
+            call umfpack_di_free_numeric(this%numeric)
+        end if
+        
+        ! Symbolic factorization
+        status = umfpack_di_symbolic(A%n, A%n, col_ptr, row_idx, csc_values, &
+                                    this%symbolic, this%control, this%info)
+        if (status /= UMFPACK_OK) then
+            info = status
+            deallocate(col_ptr, row_idx, csc_values)
+            return
+        end if
+        
+        ! Numeric factorization
+        status = umfpack_di_numeric(col_ptr, row_idx, csc_values, &
+                                   this%symbolic, this%numeric, &
+                                   this%control, this%info)
+        if (status /= UMFPACK_OK) then
+            info = status
+            deallocate(col_ptr, row_idx, csc_values)
+            return
+        end if
+        
+        ! Solve A*x = b (sys = 0 for normal solve)
+        status = umfpack_di_solve(0_c_int, col_ptr, row_idx, csc_values, &
+                                 x, b, this%numeric, this%control, this%info)
+        
+        info = status
+        
+        deallocate(col_ptr, row_idx, csc_values)
         
     end subroutine suitesparse_solve
     
     subroutine suitesparse_destroy(this)
         class(suitesparse_solver_t), intent(inout) :: this
         
-        ! Would call umfpack_di_free_symbolic and umfpack_di_free_numeric
-        this%symbolic = 0
-        this%numeric = 0
+        if (c_associated(this%symbolic)) then
+            call umfpack_di_free_symbolic(this%symbolic)
+            this%symbolic = c_null_ptr
+        end if
+        
+        if (c_associated(this%numeric)) then
+            call umfpack_di_free_numeric(this%numeric)
+            this%numeric = c_null_ptr
+        end if
+        
+        this%initialized = .false.
         
     end subroutine suitesparse_destroy
     

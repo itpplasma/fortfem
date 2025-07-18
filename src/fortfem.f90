@@ -7,6 +7,7 @@ module fortfem
     use fortfem_poisson_1d
     use fortfem_sparse_matrix
     use fortfem_solver_interface
+    use fortfem_umfpack_interface
     use fortfem_poisson_1d_sparse
     
     implicit none
