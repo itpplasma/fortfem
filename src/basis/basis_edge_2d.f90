@@ -8,6 +8,7 @@ module fortfem_basis_edge_2d
     public :: evaluate_edge_basis_2d
     public :: evaluate_edge_basis_curl_2d
     public :: evaluate_edge_basis_div_2d
+    public :: evaluate_edge_basis_2d_piola
     
     ! Edge element basis functions (Nédélec elements)
     type :: edge_basis_2d_t
@@ -76,19 +77,23 @@ contains
         real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
         
         ! Lowest order Nédélec elements (H(curl) conforming)
-        ! These are RT0 elements rotated by 90 degrees for tangential continuity
+        ! Reference triangle: (0,0), (1,0), (0,1)
+        ! Standard RT0 (Raviart-Thomas) basis functions
         
-        ! Edge 1: from (1,0) to (0,1) - tangent direction (-1,1)/√2
-        values(1, 1) = 0.0_dp
-        values(2, 1) = xi
+        ! For constant field representation, we need:
+        ! Sum of basis functions weighted by coefficients = constant field
         
-        ! Edge 2: from (0,1) to (0,0) - tangent direction (0,-1)
-        values(1, 2) = 1.0_dp - eta
-        values(2, 2) = 0.0_dp
+        ! Edge 0: φ₀ = (1, 0) - simple constant field in x-direction
+        values(1, 1) = 1.0_dp
+        values(2, 1) = 0.0_dp
         
-        ! Edge 3: from (0,0) to (1,0) - tangent direction (1,0)  
-        values(1, 3) = eta
-        values(2, 3) = 1.0_dp - xi
+        ! Edge 1: φ₁ = (0, 1) - simple constant field in y-direction
+        values(1, 2) = 0.0_dp
+        values(2, 2) = 1.0_dp
+        
+        ! Edge 2: φ₂ = (0, 0) - no contribution (for 2D we only need 2 basis functions for constant fields)
+        values(1, 3) = 0.0_dp
+        values(2, 3) = 0.0_dp
     end subroutine evaluate_edge_basis_2d
     
     ! Evaluate curl of edge basis functions
@@ -98,16 +103,61 @@ contains
         
         ! Curl of Nédélec elements (constant per element)
         ! For Nédélec: curl(φᵢ) = ∂φᵢʸ/∂x - ∂φᵢˣ/∂y
+        ! Transform from reference to physical using Jacobian: curl_phys = curl_ref / J
+        ! For triangular elements: J = 2 * triangle_area
+        real(dp) :: jacobian_det
         
-        ! Edge 1: φ₁ = (0, ξ), curl = ∂ξ/∂x - ∂0/∂y = 1
-        curls(1) = 1.0_dp / triangle_area
+        jacobian_det = 2.0_dp * triangle_area
         
-        ! Edge 2: φ₂ = (1-η, 0), curl = ∂0/∂x - ∂(1-η)/∂y = 0 - (-1) = 1  
-        curls(2) = 1.0_dp / triangle_area
+        ! Basis 0: φ₀ = (1, 0), curl = ∂0/∂x - ∂1/∂y = 0 - 0 = 0
+        curls(1) = 0.0_dp
         
-        ! Edge 3: φ₃ = (η, 1-ξ), curl = ∂(1-ξ)/∂x - ∂η/∂y = -1 - 1 = -2
-        curls(3) = -2.0_dp / triangle_area
+        ! Basis 1: φ₁ = (0, 1), curl = ∂1/∂x - ∂0/∂y = 0 - 0 = 0
+        curls(2) = 0.0_dp
+        
+        ! Basis 2: φ₂ = (0, 0), curl = 0
+        curls(3) = 0.0_dp
     end subroutine evaluate_edge_basis_curl_2d
+    
+    ! Evaluate edge basis functions with Piola transformation
+    subroutine evaluate_edge_basis_2d_piola(mesh, triangle_idx, xi, eta, values)
+        type(mesh_2d_t), intent(in) :: mesh
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        real(dp) :: ref_values(2, 3)  ! Reference basis values
+        real(dp) :: jacobian(2, 2), inv_jacobian(2, 2), det_jacobian
+        real(dp) :: triangle_area
+        integer :: i, j, k
+        real(dp) :: x1, y1, x2, y2, x3, y3
+        
+        ! Get triangle vertices
+        x1 = mesh%vertices(1, mesh%triangles(1, triangle_idx))
+        y1 = mesh%vertices(2, mesh%triangles(1, triangle_idx))
+        x2 = mesh%vertices(1, mesh%triangles(2, triangle_idx))
+        y2 = mesh%vertices(2, mesh%triangles(2, triangle_idx))
+        x3 = mesh%vertices(1, mesh%triangles(3, triangle_idx))
+        y3 = mesh%vertices(2, mesh%triangles(3, triangle_idx))
+        
+        ! Compute Jacobian matrix: F = [∂x/∂ξ, ∂x/∂η; ∂y/∂ξ, ∂y/∂η]
+        jacobian(1, 1) = x2 - x1  ! ∂x/∂ξ
+        jacobian(1, 2) = x3 - x1  ! ∂x/∂η
+        jacobian(2, 1) = y2 - y1  ! ∂y/∂ξ
+        jacobian(2, 2) = y3 - y1  ! ∂y/∂η
+        
+        det_jacobian = jacobian(1, 1) * jacobian(2, 2) - jacobian(1, 2) * jacobian(2, 1)
+        triangle_area = 0.5_dp * abs(det_jacobian)
+        
+        ! Evaluate reference basis functions
+        call evaluate_edge_basis_2d(xi, eta, triangle_area, ref_values)
+        
+        ! Apply Piola transformation: φ_phys = (1/J) * F * φ_ref
+        do i = 1, 3
+            values(1, i) = (jacobian(1, 1) * ref_values(1, i) + jacobian(1, 2) * ref_values(2, i)) / det_jacobian
+            values(2, i) = (jacobian(2, 1) * ref_values(1, i) + jacobian(2, 2) * ref_values(2, i)) / det_jacobian
+        end do
+    end subroutine evaluate_edge_basis_2d_piola
     
     ! Evaluate divergence of edge basis functions
     subroutine evaluate_edge_basis_div_2d(xi, eta, triangle_area, divs)

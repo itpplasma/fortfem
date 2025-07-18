@@ -1,7 +1,7 @@
 module fortfem_hcurl_space
     use fortfem_kinds
     use fortfem_mesh_2d
-    use fortfem_basis_edge_2d
+    use fortfem_basis_edge_2d_interface
     implicit none
     private
     
@@ -29,6 +29,8 @@ module fortfem_hcurl_space
         procedure :: evaluate_at_point => hcurl_space_evaluate_at_point
         procedure :: evaluate_curl_at_point => hcurl_space_evaluate_curl_at_point
         procedure :: get_triangle_dofs => hcurl_space_get_triangle_dofs
+        procedure :: evaluate_edge_basis_2d_with_piola
+        procedure :: evaluate_edge_basis_oriented
     end type hcurl_space_t
     
 contains
@@ -147,7 +149,7 @@ contains
         ! Get triangle area
         triangle_area = compute_triangle_area(this%mesh, triangle_idx)
         
-        ! Evaluate basis functions
+        ! Evaluate basis functions (simplified constant basis functions)
         call evaluate_edge_basis_2d(xi, eta, triangle_area, basis_values)
         
         ! Get DOF indices for this triangle
@@ -219,5 +221,95 @@ contains
         
         area = 0.5_dp * abs((x1-x3)*(y2-y3) - (x2-x3)*(y1-y3))
     end function compute_triangle_area
+    
+    ! Evaluate edge basis functions with Piola transformation
+    subroutine evaluate_edge_basis_2d_with_piola(this, triangle_idx, xi, eta, values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        real(dp) :: ref_values(2, 3)  ! Reference basis values
+        real(dp) :: jacobian(2, 2), det_jacobian
+        real(dp) :: triangle_area
+        integer :: i
+        real(dp) :: x1, y1, x2, y2, x3, y3
+        
+        ! Get triangle vertices
+        x1 = this%mesh%vertices(1, this%mesh%triangles(1, triangle_idx))
+        y1 = this%mesh%vertices(2, this%mesh%triangles(1, triangle_idx))
+        x2 = this%mesh%vertices(1, this%mesh%triangles(2, triangle_idx))
+        y2 = this%mesh%vertices(2, this%mesh%triangles(2, triangle_idx))
+        x3 = this%mesh%vertices(1, this%mesh%triangles(3, triangle_idx))
+        y3 = this%mesh%vertices(2, this%mesh%triangles(3, triangle_idx))
+        
+        ! Compute Jacobian matrix: F = [∂x/∂ξ, ∂x/∂η; ∂y/∂ξ, ∂y/∂η]
+        jacobian(1, 1) = x2 - x1  ! ∂x/∂ξ
+        jacobian(1, 2) = x3 - x1  ! ∂x/∂η
+        jacobian(2, 1) = y2 - y1  ! ∂y/∂ξ
+        jacobian(2, 2) = y3 - y1  ! ∂y/∂η
+        
+        det_jacobian = jacobian(1, 1) * jacobian(2, 2) - jacobian(1, 2) * jacobian(2, 1)
+        triangle_area = 0.5_dp * abs(det_jacobian)
+        
+        ! Evaluate reference basis functions
+        call evaluate_edge_basis_2d(xi, eta, triangle_area, ref_values)
+        
+        ! Apply Piola transformation: φ_phys = (1/J) * F * φ_ref
+        ! For H(curl): u_phys = (1/det(J)) * J * u_ref where J is Jacobian matrix
+        do i = 1, 3
+            values(1, i) = (jacobian(1, 1) * ref_values(1, i) + jacobian(1, 2) * ref_values(2, i)) / det_jacobian
+            values(2, i) = (jacobian(2, 1) * ref_values(1, i) + jacobian(2, 2) * ref_values(2, i)) / det_jacobian
+        end do
+    end subroutine evaluate_edge_basis_2d_with_piola
+    
+    ! Evaluate edge basis functions with proper orientation and Piola transformation
+    subroutine evaluate_edge_basis_oriented(this, triangle_idx, xi, eta, values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
+        
+        real(dp) :: ref_values(2, 3)  ! Reference basis values
+        real(dp) :: jacobian(2, 2), det_jacobian
+        real(dp) :: triangle_area
+        integer :: i, global_edge_idx
+        integer :: triangle_dofs(3)
+        real(dp) :: orientation_sign
+        real(dp) :: x1, y1, x2, y2, x3, y3
+        
+        ! Get triangle vertices
+        x1 = this%mesh%vertices(1, this%mesh%triangles(1, triangle_idx))
+        y1 = this%mesh%vertices(2, this%mesh%triangles(1, triangle_idx))
+        x2 = this%mesh%vertices(1, this%mesh%triangles(2, triangle_idx))
+        y2 = this%mesh%vertices(2, this%mesh%triangles(2, triangle_idx))
+        x3 = this%mesh%vertices(1, this%mesh%triangles(3, triangle_idx))
+        y3 = this%mesh%vertices(2, this%mesh%triangles(3, triangle_idx))
+        
+        ! Compute Jacobian matrix: F = [∂x/∂ξ, ∂x/∂η; ∂y/∂ξ, ∂y/∂η]
+        jacobian(1, 1) = x2 - x1  ! ∂x/∂ξ
+        jacobian(1, 2) = x3 - x1  ! ∂x/∂η
+        jacobian(2, 1) = y2 - y1  ! ∂y/∂ξ
+        jacobian(2, 2) = y3 - y1  ! ∂y/∂η
+        
+        det_jacobian = jacobian(1, 1) * jacobian(2, 2) - jacobian(1, 2) * jacobian(2, 1)
+        triangle_area = 0.5_dp * abs(det_jacobian)
+        
+        ! Evaluate reference basis functions
+        call evaluate_edge_basis_2d(xi, eta, triangle_area, ref_values)
+        
+        ! Get DOF indices for this triangle
+        call this%mesh%get_triangle_edge_dofs(triangle_idx, triangle_dofs)
+        
+        ! Apply Piola transformation with proper edge orientations
+        do i = 1, 3
+            ! For now, use positive orientation (this needs to be fixed based on mesh edge directions)
+            orientation_sign = 1.0_dp
+            
+            ! Apply Piola transformation: φ_phys = (orientation/J) * F * φ_ref
+            values(1, i) = orientation_sign * (jacobian(1, 1) * ref_values(1, i) + jacobian(1, 2) * ref_values(2, i)) / det_jacobian
+            values(2, i) = orientation_sign * (jacobian(2, 1) * ref_values(1, i) + jacobian(2, 2) * ref_values(2, i)) / det_jacobian
+        end do
+    end subroutine evaluate_edge_basis_oriented
 
 end module fortfem_hcurl_space
