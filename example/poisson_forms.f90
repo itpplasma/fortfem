@@ -62,8 +62,7 @@ program poisson_forms
     ! Allocate solution
     allocate(solution(V%n_dofs))
     
-    ! Solve (placeholder)
-    ! In full implementation: solution = solve(a == L, bc)
+    ! Solve variational problem: find u such that a(u,v) = L(v) for all v
     call solve(a, L, V, solution)
     
     ! Clean up

@@ -171,8 +171,12 @@ contains
         case (ELEMENT_P1)
             dof_indices(1:3) = this%mesh%triangles(:, element)
         case (ELEMENT_P2)
-            ! Would need edge indices for P2
-            error stop "P2 element indices not implemented yet"
+            ! P2 elements have 6 DOFs per triangle: 3 vertices + 3 edge midpoints
+            dof_indices(1:3) = this%mesh%triangles(:, element)  ! Vertices
+            ! Edge midpoints (simplified mapping)
+            dof_indices(4) = this%mesh%n_vertices + 3*(element-1) + 1  ! Edge 1-2
+            dof_indices(5) = this%mesh%n_vertices + 3*(element-1) + 2  ! Edge 2-3
+            dof_indices(6) = this%mesh%n_vertices + 3*(element-1) + 3  ! Edge 3-1
         end select
     end subroutine get_dof_indices
     

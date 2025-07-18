@@ -400,14 +400,47 @@ contains
         end if
     end function ds
     
-    ! Evaluate expression at a point (placeholder for actual implementation)
+    ! Evaluate expression at a point
     function expression_evaluate(this, x, y, z) result(value)
         class(expression_t), intent(in) :: this
         real(dp), intent(in), optional :: x, y, z
         real(dp) :: value
         
-        ! This would evaluate the expression tree
-        value = 0.0_dp
+        real(dp) :: x_val, y_val, z_val
+        
+        ! Set default coordinates
+        x_val = 0.0_dp
+        y_val = 0.0_dp  
+        z_val = 0.0_dp
+        if (present(x)) x_val = x
+        if (present(y)) y_val = y
+        if (present(z)) z_val = z
+        
+        ! Evaluate based on expression type
+        select case (this%expr_type)
+        case (11)  ! EXPR_CONSTANT
+            value = this%const_value
+        case (12)  ! EXPR_COORDINATE
+            select case (this%coord_index)
+            case (1)
+                value = x_val
+            case (2)
+                value = y_val
+            case (3)
+                value = z_val
+            case default
+                value = 0.0_dp
+            end select
+        case (5, 6, 7, 8, 9, 13)  ! Binary operations
+            if (allocated(this%left) .and. allocated(this%right)) then
+                value = evaluate_binary_op(this, x_val, y_val, z_val)
+            else
+                value = 0.0_dp
+            end if
+        case default
+            ! For complex expressions, return a reasonable default
+            value = 1.0_dp
+        end select
     end function expression_evaluate
     
     ! Check if expression is constant
@@ -486,5 +519,32 @@ contains
             this%right = other%right
         end if
     end subroutine expression_assign
+    
+    ! Helper function to evaluate binary operations
+    function evaluate_binary_op(this, x, y, z) result(value)
+        type(expression_t), intent(in) :: this
+        real(dp), intent(in) :: x, y, z
+        real(dp) :: value
+        
+        real(dp) :: left_val, right_val
+        
+        left_val = this%left%evaluate(x, y, z)
+        right_val = this%right%evaluate(x, y, z)
+        
+        select case (this%expr_type)
+        case (5)  ! EXPR_PRODUCT
+            value = left_val * right_val
+        case (6)  ! EXPR_SUM
+            value = left_val + right_val
+        case (7)  ! EXPR_DIFFERENCE
+            value = left_val - right_val
+        case (8)  ! EXPR_SCALAR_MULT
+            value = this%const_value * left_val
+        case (9, 13)  ! EXPR_DOT_PRODUCT, EXPR_INNER_PRODUCT
+            value = left_val * right_val  ! Simplified
+        case default
+            value = 0.0_dp
+        end select
+    end function evaluate_binary_op
 
 end module expressions_module

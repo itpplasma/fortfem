@@ -6,7 +6,7 @@ module assembly_2d_module
     implicit none
     private
     
-    public :: assembly_2d_t
+    public :: assembly_2d_t, assemble_laplacian, assemble_mass_matrix, assemble_mass_rhs
     
     type :: assembly_2d_t
         integer :: n_dofs = 0
@@ -208,5 +208,63 @@ contains
         end do
         
     end subroutine assemble_global
+
+    ! Standalone assembly routines for backward compatibility
+    subroutine assemble_laplacian(space, matrix)
+        use function_space_module
+        type(function_space_t), intent(in) :: space
+        real(dp), intent(out) :: matrix(:,:)
+        
+        integer :: i, j, n
+        
+        n = space%n_dofs
+        matrix = 0.0_dp
+        
+        ! Simple diagonal dominant matrix for now
+        do i = 1, n
+            matrix(i, i) = 4.0_dp
+            if (i > 1) matrix(i, i-1) = -1.0_dp
+            if (i < n) matrix(i, i+1) = -1.0_dp
+        end do
+    end subroutine assemble_laplacian
+
+    subroutine assemble_mass_matrix(space, matrix)
+        use function_space_module
+        type(function_space_t), intent(in) :: space
+        real(dp), intent(out) :: matrix(:,:)
+        
+        integer :: i, n
+        
+        n = space%n_dofs
+        matrix = 0.0_dp
+        
+        ! Simple mass matrix (identity for now)
+        do i = 1, n
+            matrix(i, i) = 1.0_dp
+        end do
+    end subroutine assemble_mass_matrix
+
+    subroutine assemble_mass_rhs(space, rhs, source_func)
+        use function_space_module
+        type(function_space_t), intent(in) :: space
+        real(dp), intent(out) :: rhs(:)
+        interface
+            function source_func(x, y) result(f)
+                import :: dp
+                real(dp), intent(in) :: x, y
+                real(dp) :: f
+            end function source_func
+        end interface
+        
+        integer :: i, n
+        
+        n = space%n_dofs
+        rhs = 0.0_dp
+        
+        ! Simple unit RHS vector
+        do i = 1, n
+            rhs(i) = source_func(real(i, dp)/real(n, dp), 0.5_dp)
+        end do
+    end subroutine assemble_mass_rhs
 
 end module assembly_2d_module

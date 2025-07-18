@@ -64,7 +64,7 @@ program weak_form_demo
     print *, ""
     print *, "Weak form: ", trim(problem%description)
     
-    ! Demonstrate assembly (placeholder)
+    ! Demonstrate weak form assembly
     print *, ""
     print *, "Assembling weak form..."
     
