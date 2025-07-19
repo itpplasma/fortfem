@@ -89,7 +89,7 @@ cout << "H(curl) error = " << Hcurlnorm << endl;
 }
 
 // Convergence study
-if (false) {  // Set to true to run convergence study
+if (true) {  // Set to true to run convergence study
     cout << "\n=== FreeFEM Convergence Study ===" << endl;
     cout << "h\t\tL2_error\tH(curl)_error\tDOFs" << endl;
     

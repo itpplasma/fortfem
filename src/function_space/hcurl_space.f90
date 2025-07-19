@@ -28,10 +28,11 @@ module fortfem_hcurl_space
         procedure :: apply_essential_bc => hcurl_space_apply_essential_bc
         procedure :: evaluate_at_point => hcurl_space_evaluate_at_point
         procedure :: evaluate_curl_at_point => hcurl_space_evaluate_curl_at_point
+        procedure :: evaluate_curl_basis_at_point => hcurl_space_evaluate_curl_basis_at_point
         procedure :: get_triangle_dofs => hcurl_space_get_triangle_dofs
-        procedure :: evaluate_edge_basis_2d_with_piola
-        procedure :: evaluate_edge_basis_oriented
-        procedure :: evaluate_edge_basis_physical
+        procedure :: evaluate_edge_basis_2d_with_piola => evaluate_edge_basis_2d_with_piola
+        procedure :: evaluate_edge_basis_oriented => evaluate_edge_basis_oriented
+        procedure :: evaluate_edge_basis_physical => evaluate_edge_basis_physical
         procedure :: evaluate_nedelec_basis_correct
         procedure :: evaluate_conservative_basis
     end type hcurl_space_t
@@ -427,5 +428,39 @@ contains
             end if
         end do
     end subroutine evaluate_conservative_basis
+
+    ! Evaluate curl of basis functions at a point
+    subroutine hcurl_space_evaluate_curl_basis_at_point(this, triangle_idx, xi, eta, curl_values)
+        class(hcurl_space_t), intent(in) :: this
+        integer, intent(in) :: triangle_idx
+        real(dp), intent(in) :: xi, eta
+        real(dp), intent(out) :: curl_values(3)  ! Curl of 3 basis functions
+        
+        real(dp) :: triangle_area
+        
+        ! Compute triangle area
+        triangle_area = compute_triangle_area_helper(this%mesh, triangle_idx)
+        
+        ! Use the corrected curl evaluation from basis_edge_2d module
+        call evaluate_edge_basis_curl_2d(xi, eta, triangle_area, curl_values)
+    end subroutine hcurl_space_evaluate_curl_basis_at_point
+
+    ! Helper function to compute triangle area
+    function compute_triangle_area_helper(mesh, triangle_idx) result(area)
+        type(mesh_2d_t), intent(in) :: mesh
+        integer, intent(in) :: triangle_idx
+        real(dp) :: area
+        
+        real(dp) :: x1, y1, x2, y2, x3, y3
+        
+        x1 = mesh%vertices(1, mesh%triangles(1, triangle_idx))
+        y1 = mesh%vertices(2, mesh%triangles(1, triangle_idx))
+        x2 = mesh%vertices(1, mesh%triangles(2, triangle_idx))
+        y2 = mesh%vertices(2, mesh%triangles(2, triangle_idx))
+        x3 = mesh%vertices(1, mesh%triangles(3, triangle_idx))
+        y3 = mesh%vertices(2, mesh%triangles(3, triangle_idx))
+        
+        area = 0.5_dp * abs((x1-x3)*(y2-y3) - (x2-x3)*(y1-y3))
+    end function compute_triangle_area_helper
 
 end module fortfem_hcurl_space

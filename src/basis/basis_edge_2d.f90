@@ -76,33 +76,40 @@ contains
         real(dp), intent(in) :: xi, eta, triangle_area
         real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
         
-        ! Nédélec elements of the first kind (lowest order) on reference triangle
-        ! Reference triangle: (0,0)-(1,0)-(0,1)
-        ! These basis functions have unit tangential component on their edge
+        ! RT0Ortho/Nédélec elements on reference triangle (0,0)-(1,0)-(0,1)
+        ! Based on FreeFEM's RT0Ortho implementation which is RT0 rotated by 90°
+        ! RT0 basis functions rotated: (x,y) → (-y,x)
+        ! This gives H(curl) conforming edge elements
         
-        ! The proper Nédélec basis functions are:
-        ! φ₀ = λ₁∇λ₂ - λ₂∇λ₁  (associated with edge 0: v₀→v₁)
-        ! φ₁ = λ₂∇λ₀ - λ₀∇λ₂  (associated with edge 1: v₁→v₂)
-        ! φ₂ = λ₀∇λ₁ - λ₁∇λ₀  (associated with edge 2: v₂→v₀)
+        real(dp) :: rt0_values(2, 3)
         
-        ! where λ₀ = 1-xi-eta, λ₁ = xi, λ₂ = eta are barycentric coordinates
+        ! First compute RT0 basis functions
+        ! RT0 edge 0: φ₀ = (1-eta, 0)/(2*area)
+        ! RT0 edge 1: φ₁ = (xi, eta-1)/(2*area)  
+        ! RT0 edge 2: φ₂ = (-xi, 1-eta)/(2*area)
         
-        ! Edge 0: from (0,0) to (1,0)
-        ! φ₀ = λ₁∇λ₂ - λ₂∇λ₁ = xi(0,1) - eta(1,0) = (-eta, xi)
-        values(1, 1) = -eta
-        values(2, 1) = xi
+        ! Normalize by triangle area for proper scaling
+        real(dp) :: scale_factor
+        scale_factor = 1.0_dp / (2.0_dp * triangle_area)
         
-        ! Edge 1: from (1,0) to (0,1)  
-        ! φ₁ = λ₂∇λ₀ - λ₀∇λ₂ = eta(-1,-1) - (1-xi-eta)(0,1) = (-eta, -eta - (1-xi-eta))
-        ! = (-eta, xi-1)
-        values(1, 2) = -eta
-        values(2, 2) = xi - 1.0_dp
+        rt0_values(1, 1) = (1.0_dp - eta) * scale_factor
+        rt0_values(2, 1) = 0.0_dp
         
-        ! Edge 2: from (0,1) to (0,0)
-        ! φ₂ = λ₀∇λ₁ - λ₁∇λ₀ = (1-xi-eta)(1,0) - xi(-1,-1) = (1-xi-eta+xi, xi)
-        ! = (1-eta, xi)
-        values(1, 3) = 1.0_dp - eta
-        values(2, 3) = xi
+        rt0_values(1, 2) = xi * scale_factor
+        rt0_values(2, 2) = (eta - 1.0_dp) * scale_factor
+        
+        rt0_values(1, 3) = -xi * scale_factor
+        rt0_values(2, 3) = (1.0_dp - eta) * scale_factor
+        
+        ! Apply 90° rotation: (x,y) → (-y,x) to get RT0Ortho
+        values(1, 1) = -rt0_values(2, 1)  ! -0 = 0
+        values(2, 1) = rt0_values(1, 1)   ! (1-eta)/2A
+        
+        values(1, 2) = -rt0_values(2, 2)  ! -(eta-1)/2A = (1-eta)/2A
+        values(2, 2) = rt0_values(1, 2)   ! xi/2A
+        
+        values(1, 3) = -rt0_values(2, 3)  ! -(1-eta)/2A = (eta-1)/2A
+        values(2, 3) = rt0_values(1, 3)   ! -xi/2A
     end subroutine evaluate_edge_basis_2d
     
     ! Evaluate curl of edge basis functions
@@ -114,18 +121,21 @@ contains
         ! Then transform from reference to physical: curl_phys = curl_ref / jacobian_det
         ! where jacobian_det = 2 * triangle_area for linear triangular mapping
         
-        real(dp) :: jacobian_det
+        real(dp) :: jacobian_det, scale_factor
         jacobian_det = 2.0_dp * triangle_area
+        scale_factor = 1.0_dp / (2.0_dp * triangle_area)
         
-        ! For the Nédélec basis functions:
-        ! φ₀ = (-eta, xi): curl = ∂xi/∂ξ - ∂(-eta)/∂η = 1 - (-1) = 2
-        ! φ₁ = (-eta, xi-1): curl = ∂(xi-1)/∂ξ - ∂(-eta)/∂η = 1 - (-1) = 2  
-        ! φ₂ = (1-eta, xi): curl = ∂xi/∂ξ - ∂(1-eta)/∂η = 1 - (-1) = 2
+        ! For RT0Ortho basis functions (RT0 rotated by 90°):
+        ! φ₀ = (0, (1-eta)/(2A)): curl = ∂((1-eta)/(2A))/∂ξ - ∂(0)/∂η = 0 - 0 = 0
+        ! φ₁ = ((1-eta)/(2A), xi/(2A)): curl = ∂(xi/(2A))/∂ξ - ∂((1-eta)/(2A))/∂η 
+        !      = 1/(2A) - (-1/(2A)) = 2/(2A) = 1/A
+        ! φ₂ = ((eta-1)/(2A), -xi/(2A)): curl = ∂(-xi/(2A))/∂ξ - ∂((eta-1)/(2A))/∂η
+        !      = -1/(2A) - 1/(2A) = -2/(2A) = -1/A
         
-        ! Transform to physical element
-        curls(1) = 2.0_dp / jacobian_det
-        curls(2) = 2.0_dp / jacobian_det
-        curls(3) = 2.0_dp / jacobian_det
+        ! Transform to physical element (already in physical coordinates)
+        curls(1) = 0.0_dp
+        curls(2) = 1.0_dp / triangle_area
+        curls(3) = -1.0_dp / triangle_area
     end subroutine evaluate_edge_basis_curl_2d
     
     ! Evaluate edge basis functions with Piola transformation
