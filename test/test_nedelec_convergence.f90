@@ -62,17 +62,18 @@ contains
         real(dp), intent(in) :: x, y
         real(dp), intent(out) :: E(2)
         
-        ! Simple polynomial solution: E = [y, x]
-        E(1) = y
-        E(2) = x
+        ! Solution with non-zero curl: E = [x*y, x^2]
+        ! curl(E) = ∂(x^2)/∂x - ∂(x*y)/∂y = 2x - x = x
+        E(1) = x * y
+        E(2) = x**2
     end subroutine
 
     subroutine analytical_curl(x, y, curl_E)
         real(dp), intent(in) :: x, y  
         real(dp), intent(out) :: curl_E
         
-        ! curl([y, x]) = ∂x/∂x - ∂y/∂y = 1 - 1 = 0
-        curl_E = 0.0_dp
+        ! curl([x*y, x^2]) = ∂(x^2)/∂x - ∂(x*y)/∂y = 2x - x = x
+        curl_E = x
     end subroutine
     
     subroutine compute_L2_error(mesh, space, coeff, analytical_func, error)
