@@ -76,24 +76,28 @@ contains
         real(dp), intent(in) :: xi, eta, triangle_area
         real(dp), intent(out) :: values(2, 3)  ! 2D vectors, 3 edges
         
-        ! Lowest order Nédélec elements (H(curl) conforming)
-        ! Reference triangle: (0,0), (1,0), (0,1)
-        ! Standard RT0 (Raviart-Thomas) basis functions
+        ! Nédélec (RT0Ortho) elements on reference triangle (0,0)-(1,0)-(0,1)
+        ! These are H(curl) conforming edge elements
+        ! Obtained by rotating RT0 basis by 90 degrees
+        ! DOFs: tangential component along edges
         
-        ! For constant field representation, we need:
-        ! Sum of basis functions weighted by coefficients = constant field
+        ! Edge 0 (from vertex 0 to vertex 1): bottom edge (0,0) → (1,0)
+        ! Tangent: (1,0), so we need a function with x-component
+        ! Nédélec φ₀ = rotate RT0 φ₀ = rotate(xi, eta-1) = (-(eta-1), xi) = (1-eta, xi)
+        values(1, 1) = 1.0_dp - eta
+        values(2, 1) = xi
         
-        ! Edge 0: φ₀ = (1, 0) - simple constant field in x-direction
-        values(1, 1) = 1.0_dp
-        values(2, 1) = 0.0_dp
+        ! Edge 1 (from vertex 1 to vertex 2): diagonal edge (1,0) → (0,1)  
+        ! Tangent: (-1,1)/√2
+        ! Nédélec φ₁ = rotate RT0 φ₁ = rotate(xi, eta) = (-eta, xi)
+        values(1, 2) = -eta
+        values(2, 2) = xi
         
-        ! Edge 1: φ₁ = (0, 1) - simple constant field in y-direction
-        values(1, 2) = 0.0_dp
-        values(2, 2) = 1.0_dp
-        
-        ! Edge 2: φ₂ = (0, 0) - no contribution (for 2D we only need 2 basis functions for constant fields)
-        values(1, 3) = 0.0_dp
-        values(2, 3) = 0.0_dp
+        ! Edge 2 (from vertex 2 to vertex 0): left edge (0,1) → (0,0)
+        ! Tangent: (0,-1), so we need a function with y-component
+        ! Nédélec φ₂ = rotate RT0 φ₂ = rotate(xi-1, eta) = (-eta, xi-1)
+        values(1, 3) = -eta
+        values(2, 3) = xi - 1.0_dp
     end subroutine evaluate_edge_basis_2d
     
     ! Evaluate curl of edge basis functions
@@ -101,22 +105,28 @@ contains
         real(dp), intent(in) :: xi, eta, triangle_area
         real(dp), intent(out) :: curls(3)  ! Scalar curl in 2D
         
-        ! Curl of Nédélec elements (constant per element)
-        ! For Nédélec: curl(φᵢ) = ∂φᵢʸ/∂x - ∂φᵢˣ/∂y
-        ! Transform from reference to physical using Jacobian: curl_phys = curl_ref / J
-        ! For triangular elements: J = 2 * triangle_area
+        ! Curl of RT0/Nédélec elements (constant per element)
+        ! For 2D: curl(φᵢ) = ∂φᵢʸ/∂x - ∂φᵢˣ/∂y
+        ! Transform from reference to physical: curl_phys = curl_ref / J
+        ! where J = 2 * triangle_area for linear triangular mapping
         real(dp) :: jacobian_det
         
         jacobian_det = 2.0_dp * triangle_area
         
-        ! Basis 0: φ₀ = (1, 0), curl = ∂0/∂x - ∂1/∂y = 0 - 0 = 0
-        curls(1) = 0.0_dp
+        ! Basis 0: φ₀ = (xi, eta-1), curl = ∂(eta-1)/∂xi - ∂xi/∂eta = 0 - 0 = 0... NO!
+        ! Actually: curl = ∂(eta-1)/∂x - ∂xi/∂y 
+        ! In reference coordinates: curl = ∂v/∂ξ - ∂u/∂η = ∂(η-1)/∂ξ - ∂ξ/∂η = 0 - 0 = 0... Still wrong!
         
-        ! Basis 1: φ₁ = (0, 1), curl = ∂1/∂x - ∂0/∂y = 0 - 0 = 0
-        curls(2) = 0.0_dp
+        ! For Nédélec basis functions:
+        ! φ₀ = (1-eta, xi): curl = ∂xi/∂xi - ∂(1-eta)/∂eta = 1 - (-1) = 2
+        ! φ₁ = (-eta, xi): curl = ∂xi/∂xi - ∂(-eta)/∂eta = 1 - (-1) = 2
+        ! φ₂ = (-eta, xi-1): curl = ∂(xi-1)/∂xi - ∂(-eta)/∂eta = 1 - (-1) = 2
         
-        ! Basis 2: φ₂ = (0, 0), curl = 0
-        curls(3) = 0.0_dp
+        ! All Nédélec basis functions have the same curl value!
+        ! Transform to physical element: curl_phys = curl_ref / jacobian_det
+        curls(1) = 2.0_dp / jacobian_det   ! Edge 0
+        curls(2) = 2.0_dp / jacobian_det   ! Edge 1  
+        curls(3) = 2.0_dp / jacobian_det   ! Edge 2
     end subroutine evaluate_edge_basis_curl_2d
     
     ! Evaluate edge basis functions with Piola transformation

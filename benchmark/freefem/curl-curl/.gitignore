@@ -1,0 +1,21 @@
+# FreeFEM output files
+*.dat
+*.eps
+*.png
+*.ps
+*.pdf
+
+# Generated scripts
+convergence_study.edp
+
+# FreeFEM temp files
+*.mesh
+*.sol
+*.bb
+
+# Python outputs
+__pycache__/
+*.pyc
+
+# Log files
+*.log
