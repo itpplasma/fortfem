@@ -151,34 +151,45 @@ contains
         
         allocate(this%vertex_to_triangles(this%n_vertices))
         allocate(this%vertex_to_vertices(this%n_vertices))
-        allocate(temp_list(20))  ! Temporary list for building connectivity
         
-        ! Build vertex-to-triangle connectivity
-        do v = 1, this%n_vertices
-            this%vertex_to_triangles(v)%n = 0
+        ! Handle different element types
+        if (this%has_triangles .and. this%has_quads) then
+            ! Mixed mesh
+            call this%build_mixed_connectivity()
+        else if (this%has_triangles) then
+            ! Triangle-only mesh
+            allocate(temp_list(20))  ! Temporary list for building connectivity
             
-            ! Count triangles containing this vertex
-            do t = 1, this%n_triangles
-                do i = 1, 3
-                    if (this%triangles(i, t) == v) then
-                        this%vertex_to_triangles(v)%n = this%vertex_to_triangles(v)%n + 1
-                        temp_list(this%vertex_to_triangles(v)%n) = t
-                        exit
-                    end if
+            ! Build vertex-to-triangle connectivity
+            do v = 1, this%n_vertices
+                this%vertex_to_triangles(v)%n = 0
+                
+                ! Count triangles containing this vertex
+                do t = 1, this%n_triangles
+                    do i = 1, 3
+                        if (this%triangles(i, t) == v) then
+                            this%vertex_to_triangles(v)%n = this%vertex_to_triangles(v)%n + 1
+                            temp_list(this%vertex_to_triangles(v)%n) = t
+                            exit
+                        end if
+                    end do
                 end do
+                
+                ! Store triangle list
+                if (this%vertex_to_triangles(v)%n > 0) then
+                    allocate(this%vertex_to_triangles(v)%items(this%vertex_to_triangles(v)%n))
+                    this%vertex_to_triangles(v)%items = temp_list(1:this%vertex_to_triangles(v)%n)
+                end if
             end do
             
-            ! Store triangle list
-            if (this%vertex_to_triangles(v)%n > 0) then
-                allocate(this%vertex_to_triangles(v)%items(this%vertex_to_triangles(v)%n))
-                this%vertex_to_triangles(v)%items = temp_list(1:this%vertex_to_triangles(v)%n)
-            end if
-        end do
-        
-        ! Build edges from triangles
-        call build_edges_from_triangles(this)
-        
-        deallocate(temp_list)
+            ! Build edges from triangles
+            call build_edges_from_triangles(this)
+            
+            deallocate(temp_list)
+        else if (this%has_quads) then
+            ! Quad-only mesh
+            call this%build_quad_connectivity()
+        end if
         
     end subroutine build_connectivity
     
@@ -558,6 +569,7 @@ contains
         end do
         
         ! Store boundary edges
+        if (allocated(this%boundary_edges)) deallocate(this%boundary_edges)
         allocate(this%boundary_edges(this%n_boundary_edges))
         this%boundary_edges = temp_boundary(1:this%n_boundary_edges)
         
@@ -839,9 +851,8 @@ contains
             end do
         end do
         
-        ! Build connectivity
+        ! Build connectivity (this will also find boundaries)
         call this%build_connectivity()
-        call this%find_boundary()
     end subroutine create_structured_quads
     
     ! Get edges of a quadrilateral
@@ -913,6 +924,9 @@ contains
         
         ! Build edge-to-quad connectivity
         call build_edge_quad_mapping(this)
+        
+        ! Find boundary edges and vertices for quad meshes
+        call find_boundary_quads(this)
         
         deallocate(edge_list)
     end subroutine build_quad_connectivity
@@ -1023,5 +1037,54 @@ contains
         ! Would merge triangle and quad edge connectivity
         write(*,*) "Mixed connectivity merge not fully implemented"
     end subroutine merge_triangle_quad_connectivity
+
+    subroutine find_boundary_quads(this)
+        class(mesh_2d_t), intent(inout) :: this
+        
+        integer :: e, q, i, j, v1, v2, count
+        integer, allocatable :: temp_boundary(:)
+        
+        if (.not. allocated(this%edges)) then
+            error stop "Edges must be built before finding boundary"
+        end if
+        
+        
+        allocate(temp_boundary(this%n_edges))
+        if (.not. allocated(this%is_boundary_vertex)) then
+            allocate(this%is_boundary_vertex(this%n_vertices))
+        end if
+        this%is_boundary_vertex = .false.
+        
+        this%n_boundary_edges = 0
+        
+        ! Find edges that belong to only one quadrilateral
+        do e = 1, this%n_edges
+            v1 = this%edges(1, e)
+            v2 = this%edges(2, e)
+            
+            ! Count quads sharing this edge
+            count = 0
+            if (allocated(this%edge_to_quads)) then
+                if (this%edge_to_quads(1, e) > 0) count = count + 1
+                if (this%edge_to_quads(2, e) > 0) count = count + 1
+            end if
+            
+            ! If edge belongs to only one quad, it's on the boundary
+            if (count == 1) then
+                this%n_boundary_edges = this%n_boundary_edges + 1
+                temp_boundary(this%n_boundary_edges) = e
+                this%is_boundary_vertex(v1) = .true.
+                this%is_boundary_vertex(v2) = .true.
+            end if
+        end do
+        
+        ! Store boundary edges
+        if (allocated(this%boundary_edges)) deallocate(this%boundary_edges)
+        allocate(this%boundary_edges(this%n_boundary_edges))
+        this%boundary_edges = temp_boundary(1:this%n_boundary_edges)
+        
+        deallocate(temp_boundary)
+        
+    end subroutine find_boundary_quads
 
 end module fortfem_mesh_2d
